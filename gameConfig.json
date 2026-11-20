@@ -432,6 +432,19 @@
           "label": "♥ を消す"
         }
       ]
+    },
+    {
+      "stageNumber": 5,
+      "title": "STAGE 5 : スコアアタック",
+      "description": "20手で15000点を目指そう！コンボをつなげて稼げ！",
+      "moves": 20,
+      "objectives": [
+        {
+          "type": "score",
+          "target": 15000,
+          "label": "スコア 15000"
+        }
+      ]
     }
   ],
   "tiles": [

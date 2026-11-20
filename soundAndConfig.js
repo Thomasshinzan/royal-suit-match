@@ -98,6 +98,15 @@ const DEFAULT_GAME_CONFIG = {
         { type: "collect_suit", suitId: "spade", target: 24, label: "♠ を消す" },
         { type: "collect_suit", suitId: "heart", target: 24, label: "♥ を消す" }
       ]
+    },
+    {
+      stageNumber: 5,
+      title: "STAGE 5 : スコアアタック",
+      description: "20手で15000点を目指そう！コンボをつなげて稼げ！",
+      moves: 20,
+      objectives: [
+        { type: "score", target: 15000, label: "スコア 15000" }
+      ]
     }
   ]
 };
