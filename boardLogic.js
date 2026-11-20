@@ -15,6 +15,7 @@ class RoyalMatchBoard {
     this.cols = this.config.cols;
 
     this.grid = [];
+    this.holeSet = new Set();
     this.score = 0;
     this.moves = this.config.initialMoves;
     this.combo = 0;
@@ -48,6 +49,36 @@ class RoyalMatchBoard {
       cell.className = 'grid-cell';
       this.gridBg.appendChild(cell);
     }
+    this.updateHoleBackground();
+  }
+
+  isHoleCell(r, c) {
+    return this.holeSet.has(`${r},${c}`);
+  }
+
+  isBlockerCell(r, c) {
+    return this.isHoleCell(r, c) || this.isCrateCell(r, c);
+  }
+
+  setHoleMap(holeMap) {
+    this.holeSet = new Set();
+    if (holeMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          if (holeMap[r]?.[c]) this.holeSet.add(`${r},${c}`);
+        }
+      }
+    }
+    this.updateHoleBackground();
+  }
+
+  updateHoleBackground() {
+    if (!this.gridBg) return;
+    Array.from(this.gridBg.children).forEach((cell, i) => {
+      const r = Math.floor(i / this.cols);
+      const c = i % this.cols;
+      cell.classList.toggle('hole-cell', this.isHoleCell(r, c));
+    });
   }
 
   isCrateCell(r, c) {
@@ -188,7 +219,7 @@ class RoyalMatchBoard {
         const tile = this.grid[r][c];
         if (!tile || tile.isCrate) { c++; continue; }
         let end = c + 1;
-        while (end < this.cols && !this.grid[r][end]?.isCrate && this.grid[r][end]?.def.id === tile.def.id) end++;
+        while (end < this.cols && !this.isHoleCell(r, end) && !this.grid[r][end]?.isCrate && this.grid[r][end]?.def.id === tile.def.id) end++;
         if (end - c >= this.config.minMatchLength) {
           for (let k = c; k < end; k++) {
             const key = `${r},${k}`;
@@ -206,7 +237,7 @@ class RoyalMatchBoard {
         const tile = this.grid[r][c];
         if (!tile || tile.isCrate) { r++; continue; }
         let end = r + 1;
-        while (end < this.rows && !this.grid[end][c]?.isCrate && this.grid[end][c]?.def.id === tile.def.id) end++;
+        while (end < this.rows && !this.isHoleCell(end, c) && !this.grid[end][c]?.isCrate && this.grid[end][c]?.def.id === tile.def.id) end++;
         if (end - r >= this.config.minMatchLength) {
           for (let k = r; k < end; k++) {
             const key = `${k},${c}`;
@@ -309,13 +340,13 @@ class RoyalMatchBoard {
       let segmentBottom = this.rows - 1;
 
       while (segmentBottom >= 0) {
-        if (this.isCrateCell(segmentBottom, c)) {
+        if (this.isBlockerCell(segmentBottom, c)) {
           segmentBottom--;
           continue;
         }
 
         let segmentTop = segmentBottom;
-        while (segmentTop - 1 >= 0 && !this.isCrateCell(segmentTop - 1, c)) {
+        while (segmentTop - 1 >= 0 && !this.isBlockerCell(segmentTop - 1, c)) {
           segmentTop--;
         }
 
@@ -362,16 +393,16 @@ class RoyalMatchBoard {
         if (!curr || curr.isCrate) continue;
 
         if (curr.specialId) {
-          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
-          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1)) return [{ r, c }, { r, c: c - 1 }];
-          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
-          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
+          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
+          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1)) return [{ r, c }, { r, c: c - 1 }];
+          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
+          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
         }
 
-        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
+        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
           return [{ r, c }, { r, c: c + 1 }];
         }
-        if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) {
+        if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) {
           return [{ r, c }, { r: r + 1, c }];
         }
       }

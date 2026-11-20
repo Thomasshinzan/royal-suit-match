@@ -78,6 +78,26 @@ const DEFAULT_GAME_CONFIG = {
         { type: "destroy_crates", target: 12, label: "木箱を破壊" },
         { type: "use_special", target: 3, label: "J/Q/K/A発動" }
       ]
+    },
+    {
+      stageNumber: 4,
+      title: "STAGE 4 : センターホール",
+      description: "中央の2×2の穴に気をつけて、スペードとハートを24個ずつ集めよう！",
+      moves: 25,
+      holeMap: [
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0]
+      ],
+      objectives: [
+        { type: "collect_suit", suitId: "spade", target: 24, label: "♠ を消す" },
+        { type: "collect_suit", suitId: "heart", target: 24, label: "♥ を消す" }
+      ]
     }
   ]
 };

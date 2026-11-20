@@ -157,7 +157,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         else targetR += dy > 0 ? 1 : -1;
 
         this.clearSelection();
-        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC)) {
+        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC)) {
           this.attemptSwap(origin, { r: targetR, c: targetC });
         }
       }
@@ -266,9 +266,11 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0 };
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const crateMap = stage.crateMap || null;
+    this.setHoleMap(stage.holeMap || null);
 
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
+        if (this.isHoleCell(r, c)) continue;
         const crateHp = crateMap?.[r]?.[c] || 0;
         if (crateHp > 0) {
           this.grid[r][c] = this.createCrateObject(r, c, crateHp);
@@ -276,11 +278,11 @@ class RoyalMatchGame extends RoyalMatchBoard {
         }
 
         const forbiddenIds = new Set();
-        if (c >= 2 && !this.grid[r][c - 1]?.isCrate && !this.grid[r][c - 2]?.isCrate &&
+        if (c >= 2 && !this.isHoleCell(r, c - 1) && !this.isHoleCell(r, c - 2) && !this.grid[r][c - 1]?.isCrate && !this.grid[r][c - 2]?.isCrate &&
             this.grid[r][c - 1]?.def.id === this.grid[r][c - 2]?.def.id) {
           forbiddenIds.add(this.grid[r][c - 1].def.id);
         }
-        if (r >= 2 && !this.grid[r - 1][c]?.isCrate && !this.grid[r - 2][c]?.isCrate &&
+        if (r >= 2 && !this.isHoleCell(r - 1, c) && !this.isHoleCell(r - 2, c) && !this.grid[r - 1][c]?.isCrate && !this.grid[r - 2][c]?.isCrate &&
             this.grid[r - 1][c]?.def.id === this.grid[r - 2][c]?.def.id) {
           forbiddenIds.add(this.grid[r - 1][c].def.id);
         }
@@ -295,7 +297,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
   }
 
   async attemptSwap(posA, posB) {
-    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c)) return;
+    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c)) return;
     this.isBusy = true;
     this.sound.playSwap();
 
