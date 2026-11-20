@@ -20,6 +20,49 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
   // ---- オートセーブ (localStorage) ----
   static SAVE_KEY = 'royalSuitMatchSaveV1';
+  // 全クリした一番先のステージを覚えておく記録。
+  // セーブ本体とは別キーにすることで、最終ステージをクリアして
+  // セーブが「全クリ済み」になっても、後からステージが追加された
+  // ときにその新しいステージから再開できる。
+  static PROGRESS_KEY = 'royalSuitMatchProgressV1';
+
+  readProgress() {
+    try {
+      const raw = localStorage.getItem(RoyalMatchGame.PROGRESS_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.version !== 1) return null;
+      if (typeof data.highestClearedStageIndex !== 'number' || data.highestClearedStageIndex < 0) return null;
+      return data;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  recordStageCleared(stageIdx) {
+    try {
+      const prev = this.readProgress();
+      const highest = Math.max(prev ? prev.highestClearedStageIndex : -1, stageIdx);
+      localStorage.setItem(RoyalMatchGame.PROGRESS_KEY, JSON.stringify({
+        version: 1, highestClearedStageIndex: highest
+      }));
+    } catch (err) {
+      console.warn('クリア進捗の保存に失敗しました:', err);
+    }
+  }
+
+  // 全ステージ制覇の目印だけ残す。次に開いたとき、クリア済みの
+  // 次のステージがあればそこから、新しいステージがなければ
+  // Stage 1 から（もう一度遊ぶ）始まる。
+  saveAllClearedMarker() {
+    try {
+      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify({
+        version: 1, pendingFresh: true, stageIndex: 0, allCleared: true
+      }));
+    } catch (err) {
+      console.warn('オートセーブに失敗しました:', err);
+    }
+  }
 
   saveGame() {
     try {
@@ -54,7 +97,10 @@ class RoyalMatchGame extends RoyalMatchBoard {
   }
 
   clearSave() {
-    try { localStorage.removeItem(RoyalMatchGame.SAVE_KEY); } catch (err) { /* ignore */ }
+    try {
+      localStorage.removeItem(RoyalMatchGame.SAVE_KEY);
+      localStorage.removeItem(RoyalMatchGame.PROGRESS_KEY);
+    } catch (err) { /* ignore */ }
   }
 
   readSave() {
@@ -74,7 +120,21 @@ class RoyalMatchGame extends RoyalMatchBoard {
     const save = this.readSave();
     if (!save) return false;
     if (save.pendingFresh) {
-      this.loadStage(save.stageIndex);
+      if (save.allCleared) {
+        // 全クリ済み：クリアした次のステージがあればそこから、
+        // なければ Stage 1 からもう一度遊ぶ
+        const progress = this.readProgress();
+        const nextIdx = (progress ? progress.highestClearedStageIndex : -1) + 1;
+        const startIdx = nextIdx < this.stages.length ? nextIdx : 0;
+        this.loadStage(startIdx);
+        // loadStage は普通のセーブを書き込んでしまうので、
+        // 新しいステージがまだ無い場合は目印を書き戻しておく。
+        // こうしないと、Stage 1 を開いた時点で目印が消えて
+        // 後から追加されたステージから再開できなくなる。
+        if (startIdx === 0) this.saveAllClearedMarker();
+      } else {
+        this.loadStage(save.stageIndex);
+      }
       return true;
     }
     if (!Array.isArray(save.grid) || save.grid.length !== this.rows) return false;
@@ -199,8 +259,9 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     if (this.isStageCleared()) {
       // クリア済みの盤面を復元させない：次ステージへ進む場合は次ステージを新規で開く目印だけ残す
+      this.recordStageCleared(this.currentStageIndex);
       if (this.currentStageIndex + 1 < this.stages.length) this.savePendingStage(this.currentStageIndex + 1);
-      else this.clearSave();
+      else this.saveAllClearedMarker();
       this.sound.playStageClear();
       const stage = this.getCurrentStage();
       const hasNextStage = this.currentStageIndex + 1 < this.stages.length;
