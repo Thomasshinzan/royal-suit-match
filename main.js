@@ -15,7 +15,108 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     this.initGridBackground();
     this.bindEvents();
-    this.loadStage(0);
+    if (!this.tryRestoreSave()) this.loadStage(0);
+  }
+
+  // ---- オートセーブ (localStorage) ----
+  static SAVE_KEY = 'royalSuitMatchSaveV1';
+
+  saveGame() {
+    try {
+      const gridData = this.grid.map(row => row.map(tile => {
+        if (!tile) return null;
+        if (tile.isCrate) return { type: 'crate', hp: tile.hp };
+        return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null };
+      }));
+      const data = {
+        version: 1,
+        stageIndex: this.currentStageIndex,
+        score: this.score,
+        moves: this.moves,
+        combo: this.combo,
+        stageProgress: this.stageProgress,
+        grid: gridData
+      };
+      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify(data));
+    } catch (err) {
+      console.warn('オートセーブに失敗しました:', err);
+    }
+  }
+
+  savePendingStage(stageIdx) {
+    try {
+      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify({
+        version: 1, pendingFresh: true, stageIndex: stageIdx
+      }));
+    } catch (err) {
+      console.warn('オートセーブに失敗しました:', err);
+    }
+  }
+
+  clearSave() {
+    try { localStorage.removeItem(RoyalMatchGame.SAVE_KEY); } catch (err) { /* ignore */ }
+  }
+
+  readSave() {
+    try {
+      const raw = localStorage.getItem(RoyalMatchGame.SAVE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.version !== 1) return null;
+      if (typeof data.stageIndex !== 'number' || data.stageIndex < 0 || data.stageIndex >= this.stages.length) return null;
+      return data;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  tryRestoreSave() {
+    const save = this.readSave();
+    if (!save) return false;
+    if (save.pendingFresh) {
+      this.loadStage(save.stageIndex);
+      return true;
+    }
+    if (!Array.isArray(save.grid) || save.grid.length !== this.rows) return false;
+    const stage = this.stages[save.stageIndex];
+    if (!stage) return false;
+
+    this.currentStageIndex = save.stageIndex;
+    this.hideOverlay();
+    this.clearSelection();
+    this.tileLayer.innerHTML = '';
+    this.fxLayer.innerHTML = '';
+    this.score = save.score || 0;
+    this.moves = typeof save.moves === 'number' ? save.moves : stage.moves;
+    this.combo = save.combo || 0;
+    this.isBusy = false;
+    this.lastSwappedCells = [];
+    this.stageProgress = save.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0 };
+    this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
+    this.setHoleMap(stage.holeMap || null);
+
+    for (let r = 0; r < this.rows; r++) {
+      if (!Array.isArray(save.grid[r]) || save.grid[r].length !== this.cols) return false;
+      for (let c = 0; c < this.cols; c++) {
+        const cell = save.grid[r][c];
+        if (!cell) continue;
+        if (this.isHoleCell(r, c)) return false;
+        if (cell.type === 'crate') {
+          this.grid[r][c] = this.createCrateObject(r, c, cell.hp || 1);
+        } else if (cell.type === 'tile') {
+          const def = this.tileMap.get(cell.defId);
+          if (!def) return false;
+          this.grid[r][c] = this.createTileObject(def, r, c, r, cell.specialId || null);
+        } else {
+          return false;
+        }
+      }
+    }
+
+    this.updateHUD();
+    this.updateStageObjectivesUI();
+    if (!this.findValidMove()) this.shuffleBoard();
+    return true;
   }
 
   getCurrentStage() {
@@ -97,6 +198,9 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.updateStageObjectivesUI();
 
     if (this.isStageCleared()) {
+      // クリア済みの盤面を復元させない：次ステージへ進む場合は次ステージを新規で開く目印だけ残す
+      if (this.currentStageIndex + 1 < this.stages.length) this.savePendingStage(this.currentStageIndex + 1);
+      else this.clearSave();
       this.sound.playStageClear();
       const stage = this.getCurrentStage();
       const hasNextStage = this.currentStageIndex + 1 < this.stages.length;
@@ -121,6 +225,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     if (this.moves <= 0) {
       const stage = this.getCurrentStage();
+      this.savePendingStage(this.currentStageIndex);
       this.stageActionType = 'restart';
       if (this.overlayBtn) this.overlayBtn.textContent = `↻ STAGE ${stage.stageNumber} に再挑戦`;
       this.showOverlay(
@@ -130,6 +235,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       return true;
     }
 
+    this.saveGame();
     return false;
   }
 
@@ -187,6 +293,12 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     document.getElementById('btn-reset')?.addEventListener('click', () => {
       if (!this.isBusy) this.loadStage(this.currentStageIndex);
+    });
+
+    document.getElementById('btn-clear-save')?.addEventListener('click', () => {
+      if (this.isBusy) return;
+      this.clearSave();
+      this.loadStage(0);
     });
 
     this.overlayBtn?.addEventListener('click', () => {
@@ -294,6 +406,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     if (!this.findValidMove()) this.shuffleBoard();
     this.updateHUD();
     this.updateStageObjectivesUI();
+    this.saveGame();
   }
 
   async attemptSwap(posA, posB) {

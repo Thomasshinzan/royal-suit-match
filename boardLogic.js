@@ -454,6 +454,7 @@ class RoyalMatchBoard {
     }
 
     this.hideOverlay();
+    if (typeof this.saveGame === 'function') this.saveGame();
     await this.sleep(300);
   }
 
