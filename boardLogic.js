@@ -85,6 +85,61 @@ class RoyalMatchBoard {
     return Boolean(this.grid[r]?.[c]?.isCrate);
   }
 
+  isTokenCell(r, c) {
+    return Boolean(this.grid[r]?.[c]?.isToken);
+  }
+
+  // 破壊不可能トークン（👑クラウン）。マッチ・スペシャル・入れ替えの
+  // 対象にならず、重力でのみ落下する。最下段まで落ちたら回収される。
+  createTokenObject(row, col) {
+    const uid = this.nextTileUid++;
+    const el = document.createElement('div');
+    el.className = 'card-tile token-tile';
+    el.dataset.uid = uid;
+    el.innerHTML = `<span class="card-suit" style="font-size:1.55rem;">👑</span>`;
+
+    const tokenObj = {
+      uid,
+      isToken: true,
+      def: { id: 'token', name: 'クラウン', scoreWeight: 0 },
+      specialId: null,
+      row,
+      col,
+      el
+    };
+
+    this.applyTileCoordinates(el, row, col);
+    this.tileLayer.appendChild(el);
+    return tokenObj;
+  }
+
+  // 最下段に届いたトークンを回収し、落下した個数を返す
+  collectDroppedTokens() {
+    let dropped = 0;
+    const bottom = this.rows - 1;
+    for (let c = 0; c < this.cols; c++) {
+      const tile = this.grid[bottom][c];
+      if (tile?.isToken) {
+        dropped++;
+        if (this.recordTokenDroppedProgress) this.recordTokenDroppedProgress(1);
+        this.spawnSparkles(bottom, c);
+        tile.el.remove();
+        this.grid[bottom][c] = null;
+      }
+    }
+    if (dropped > 0 && this.updateStageObjectivesUI) this.updateStageObjectivesUI();
+    return dropped;
+  }
+
+  // トークンを回収したら、その分を落下・補充して再度チェックする
+  async collectDroppedTokensAndRefill() {
+    let dropped = this.collectDroppedTokens();
+    while (dropped > 0) {
+      await this.applyGravityAndRefill();
+      dropped = this.collectDroppedTokens();
+    }
+  }
+
   createCrateObject(row, col, hp = 1) {
     const uid = this.nextTileUid++;
     const el = document.createElement('div');
@@ -217,9 +272,9 @@ class RoyalMatchBoard {
       let c = 0;
       while (c < this.cols) {
         const tile = this.grid[r][c];
-        if (!tile || tile.isCrate) { c++; continue; }
+        if (!tile || tile.isCrate || tile.isToken) { c++; continue; }
         let end = c + 1;
-        while (end < this.cols && !this.isHoleCell(r, end) && !this.grid[r][end]?.isCrate && this.grid[r][end]?.def.id === tile.def.id) end++;
+        while (end < this.cols && !this.isHoleCell(r, end) && !this.grid[r][end]?.isCrate && !this.grid[r][end]?.isToken && this.grid[r][end]?.def.id === tile.def.id) end++;
         if (end - c >= this.config.minMatchLength) {
           for (let k = c; k < end; k++) {
             const key = `${r},${k}`;
@@ -235,9 +290,9 @@ class RoyalMatchBoard {
       let r = 0;
       while (r < this.rows) {
         const tile = this.grid[r][c];
-        if (!tile || tile.isCrate) { r++; continue; }
+        if (!tile || tile.isCrate || tile.isToken) { r++; continue; }
         let end = r + 1;
-        while (end < this.rows && !this.isHoleCell(end, c) && !this.grid[end][c]?.isCrate && this.grid[end][c]?.def.id === tile.def.id) end++;
+        while (end < this.rows && !this.isHoleCell(end, c) && !this.grid[end][c]?.isCrate && !this.grid[end][c]?.isToken && this.grid[end][c]?.def.id === tile.def.id) end++;
         if (end - r >= this.config.minMatchLength) {
           for (let k = r; k < end; k++) {
             const key = `${k},${c}`;
@@ -390,19 +445,19 @@ class RoyalMatchBoard {
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const curr = this.grid[r][c];
-        if (!curr || curr.isCrate) continue;
+        if (!curr || curr.isCrate || curr.isToken) continue;
 
         if (curr.specialId) {
-          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
-          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1)) return [{ r, c }, { r, c: c - 1 }];
-          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
-          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
+          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.isTokenCell(r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
+          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1) && !this.isTokenCell(r, c - 1)) return [{ r, c }, { r, c: c - 1 }];
+          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && !this.isTokenCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
+          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c) && !this.isTokenCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
         }
 
-        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
+        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.isTokenCell(r, c + 1) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
           return [{ r, c }, { r, c: c + 1 }];
         }
-        if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) {
+        if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && !this.isTokenCell(r + 1, c) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) {
           return [{ r, c }, { r: r + 1, c }];
         }
       }
@@ -413,7 +468,7 @@ class RoyalMatchBoard {
   wouldMatchAfterSwap(posA, posB) {
     const tempA = this.grid[posA.r][posA.c];
     const tempB = this.grid[posB.r][posB.c];
-    if (!tempA || !tempB || tempA.isCrate || tempB.isCrate || tempA.def.id === tempB.def.id) return false;
+    if (!tempA || !tempB || tempA.isCrate || tempB.isCrate || tempA.isToken || tempB.isToken || tempA.def.id === tempB.def.id) return false;
     this.grid[posA.r][posA.c] = tempB;
     this.grid[posB.r][posB.c] = tempA;
     const hasMatch = this.findAllMatches().cells.length > 0;
@@ -430,7 +485,7 @@ class RoyalMatchBoard {
     const movableTiles = [];
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
-        if (this.grid[r][c] && !this.grid[r][c].isCrate) {
+        if (this.grid[r][c] && !this.grid[r][c].isCrate && !this.grid[r][c].isToken) {
           movableCoords.push({ r, c });
           movableTiles.push(this.grid[r][c]);
         }

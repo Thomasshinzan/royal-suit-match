@@ -157,6 +157,25 @@ const DEFAULT_GAME_CONFIG = {
         { type: "collect_suit", suitId: "club", target: 24, label: "♣ を消す" },
         { type: "collect_suit", suitId: "joker", target: 20, label: "★ を消す" }
       ]
+    },
+    {
+      stageNumber: 8,
+      title: "STAGE 8 : クラウン・ドロップ",
+      description: "破壊できない👑クラウンが最上段に8個！下のタイルを消して、一番下まで落とそう！",
+      moves: 50,
+      tokenMap: [
+        [1, 1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0]
+      ],
+      objectives: [
+        { type: "drop_token", target: 8, label: "👑を落とす" }
+      ]
     }
   ]
 };

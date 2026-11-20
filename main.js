@@ -6,7 +6,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     super(configData);
 
     this.currentStageIndex = 0;
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0 };
+    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0 };
     this.stageActionType = 'restart';
 
     this.stageTitleEl = document.getElementById('stage-title');
@@ -70,6 +70,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       const gridData = this.grid.map(row => row.map(tile => {
         if (!tile) return null;
         if (tile.isCrate) return { type: 'crate', hp: tile.hp };
+        if (tile.isToken) return { type: 'token' };
         return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null };
       }));
       const data = {
@@ -155,7 +156,8 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.combo = save.combo || 0;
     this.isBusy = false;
     this.lastSwappedCells = [];
-    this.stageProgress = save.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0 };
+    this.stageProgress = save.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0 };
+    if (typeof this.stageProgress.tokensDropped !== 'number') this.stageProgress.tokensDropped = 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     this.setHoleMap(stage.holeMap || null);
 
@@ -167,6 +169,8 @@ class RoyalMatchGame extends RoyalMatchBoard {
         if (this.isHoleCell(r, c)) return false;
         if (cell.type === 'crate') {
           this.grid[r][c] = this.createCrateObject(r, c, cell.hp || 1);
+        } else if (cell.type === 'token') {
+          this.grid[r][c] = this.createTokenObject(r, c);
         } else if (cell.type === 'tile') {
           const def = this.tileMap.get(cell.defId);
           if (!def) return false;
@@ -217,6 +221,9 @@ class RoyalMatchGame extends RoyalMatchBoard {
       } else if (obj.type === 'destroy_crates') {
         currentVal = this.stageProgress.cratesDestroyed;
         iconHtml = '📦';
+      } else if (obj.type === 'drop_token') {
+        currentVal = this.stageProgress.tokensDropped || 0;
+        iconHtml = '👑';
       }
 
       const isDone = currentVal >= obj.target;
@@ -240,6 +247,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       if (obj.type === 'score') return this.score >= obj.target;
       if (obj.type === 'use_special') return this.stageProgress.specialUsedCount >= obj.target;
       if (obj.type === 'destroy_crates') return this.stageProgress.cratesDestroyed >= obj.target;
+      if (obj.type === 'drop_token') return (this.stageProgress.tokensDropped || 0) >= obj.target;
       return false;
     });
   }
@@ -252,6 +260,10 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
   recordSpecialUsedProgress(count = 1) {
     this.stageProgress.specialUsedCount += count;
+  }
+
+  recordTokenDroppedProgress(count = 1) {
+    this.stageProgress.tokensDropped = (this.stageProgress.tokensDropped || 0) + count;
   }
 
   recordCrateDestroyedProgress(count = 1) {
@@ -328,7 +340,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         else targetR += dy > 0 ? 1 : -1;
 
         this.clearSelection();
-        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC)) {
+        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC) && !this.isTokenCell(origin.r, origin.c) && !this.isTokenCell(targetR, targetC)) {
           this.attemptSwap(origin, { r: targetR, c: targetC });
         }
       }
@@ -375,7 +387,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
   async handleCellTap(cell) {
     const tappedTile = this.grid[cell.r]?.[cell.c];
-    if (!tappedTile || tappedTile.isCrate) return;
+    if (!tappedTile || tappedTile.isCrate || tappedTile.isToken) return;
 
     if (this.selectedCell) {
       if (this.selectedCell.r === cell.r && this.selectedCell.c === cell.c) {
@@ -440,9 +452,10 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.combo = 0;
     this.isBusy = false;
     this.lastSwappedCells = [];
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0 };
+    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0 };
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const crateMap = stage.crateMap || null;
+    const tokenMap = stage.tokenMap || null;
     this.setHoleMap(stage.holeMap || null);
 
     for (let r = 0; r < this.rows; r++) {
@@ -451,6 +464,10 @@ class RoyalMatchGame extends RoyalMatchBoard {
         const crateHp = crateMap?.[r]?.[c] || 0;
         if (crateHp > 0) {
           this.grid[r][c] = this.createCrateObject(r, c, crateHp);
+          continue;
+        }
+        if (tokenMap?.[r]?.[c]) {
+          this.grid[r][c] = this.createTokenObject(r, c);
           continue;
         }
 
@@ -475,7 +492,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
   }
 
   async attemptSwap(posA, posB) {
-    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c)) return;
+    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c) || this.isTokenCell(posA.r, posA.c) || this.isTokenCell(posB.r, posB.c)) return;
     this.isBusy = true;
     this.sound.playSwap();
 
@@ -735,7 +752,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       });
 
     const crateTargets = cellsToRemove.filter(({ r, c }) => this.isCrateCell(r, c));
-    const cardTargets = cellsToRemove.filter(({ r, c }) => !this.isCrateCell(r, c));
+    const cardTargets = cellsToRemove.filter(({ r, c }) => !this.isCrateCell(r, c) && !this.isTokenCell(r, c));
 
     let roundPoints = comboBonus;
     for (const { r, c } of cardTargets) {
@@ -771,6 +788,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     }
 
     await this.applyGravityAndRefill();
+    await this.collectDroppedTokensAndRefill();
     const nextMatches = this.findAllMatches();
     if (nextMatches.cells.length > 0) {
       await this.resolveCascadeLoop(nextMatches);
@@ -975,7 +993,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     });
 
     const crateTargets = allDestroyCells.filter(({ r, c }) => this.isCrateCell(r, c));
-    const cardTargets = allDestroyCells.filter(({ r, c }) => !this.isCrateCell(r, c));
+    const cardTargets = allDestroyCells.filter(({ r, c }) => !this.isCrateCell(r, c) && !this.isTokenCell(r, c));
 
     let roundPoints = 0;
     let centerR = 0;
@@ -1023,6 +1041,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.updateStageObjectivesUI();
 
     await this.applyGravityAndRefill();
+    await this.collectDroppedTokensAndRefill();
     const nextMatches = this.findAllMatches();
     if (nextMatches.cells.length > 0) {
       await this.resolveCascadeLoop(nextMatches);
@@ -1157,7 +1176,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       const cardTargets = [];
       for (const cell of cellsToRemove) {
         if (this.isCrateCell(cell.r, cell.c)) crateKeys.add(`${cell.r},${cell.c}`);
-        else cardTargets.push(cell);
+        else if (!this.isTokenCell(cell.r, cell.c)) cardTargets.push(cell);
       }
 
       const crateTargets = Array.from(crateKeys).map(k => {
@@ -1230,6 +1249,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
       this.lastSwappedCells = [];
       await this.applyGravityAndRefill();
+      await this.collectDroppedTokensAndRefill();
       currentMatchData = this.findAllMatches();
     }
   }
