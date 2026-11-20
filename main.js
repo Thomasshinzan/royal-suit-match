@@ -53,7 +53,8 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
   // 全ステージ制覇の目印だけ残す。次に開いたとき、クリア済みの
   // 次のステージがあればそこから、新しいステージがなければ
-  // Stage 1 から（もう一度遊ぶ）始まる。
+  // 最終ステージから始まる。Stage 1 へ戻るのはステージ選択
+  // ボタンでの手動操作だけにする（勝手には戻らない）。
   saveAllClearedMarker() {
     try {
       localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify({
@@ -122,16 +123,19 @@ class RoyalMatchGame extends RoyalMatchBoard {
     if (save.pendingFresh) {
       if (save.allCleared) {
         // 全クリ済み：クリアした次のステージがあればそこから、
-        // なければ Stage 1 からもう一度遊ぶ
+        // なければ最終ステージから。Stage 1 へは手動で戻る。
         const progress = this.readProgress();
         const nextIdx = (progress ? progress.highestClearedStageIndex : -1) + 1;
-        const startIdx = nextIdx < this.stages.length ? nextIdx : 0;
-        this.loadStage(startIdx);
-        // loadStage は普通のセーブを書き込んでしまうので、
-        // 新しいステージがまだ無い場合は目印を書き戻しておく。
-        // こうしないと、Stage 1 を開いた時点で目印が消えて
-        // 後から追加されたステージから再開できなくなる。
-        if (startIdx === 0) this.saveAllClearedMarker();
+        if (nextIdx < this.stages.length) {
+          this.loadStage(nextIdx);
+        } else {
+          this.loadStage(this.stages.length - 1);
+          // loadStage は普通のセーブを書き込んでしまうので目印を
+          // 書き戻しておく。こうしないと、最終ステージを開いた
+          // 時点で目印が消えて、後から追加されたステージから
+          // 再開できなくなる。
+          this.saveAllClearedMarker();
+        }
       } else {
         this.loadStage(save.stageIndex);
       }
