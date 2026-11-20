@@ -178,7 +178,7 @@ const DEFAULT_GAME_CONFIG = {
       ]
     },
     {
-          "id": 9,
+          "stageNumber": 9,
           "title": "STAGE 9 : スター・ホール・ドロップ",
           "description": "👑6個と8つの穴！真ん中の列は穴で下が塞がれてるから、クラウンを横に入れ替えて逃がして落とそう。♣も20枚集めてね！",
           "moves": 45,
