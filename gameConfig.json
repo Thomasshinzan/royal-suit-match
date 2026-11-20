@@ -1,0 +1,387 @@
+{
+  "boardConfig": {
+    "baseMatchScore": 100,
+    "cols": 8,
+    "comboMultiplierStep": 0.5,
+    "initialMoves": 25,
+    "minMatchLength": 3,
+    "rows": 8,
+    "timingsMs": {
+      "fall": 340,
+      "matchPop": 300,
+      "swap": 220
+    }
+  },
+  "specialCards": [
+    {
+      "bonusScore": 250,
+      "color": "#38bdf8",
+      "condition": "直線に4個",
+      "description": "タップまたは隣と入替で周囲8個を爆破",
+      "icon": "💥",
+      "id": "line_4",
+      "name": "ボム (J)",
+      "rank": "J",
+      "tapActivatable": true
+    },
+    {
+      "bonusScore": 500,
+      "color": "#fbbf24",
+      "condition": "直線に5個",
+      "description": "タップまたは隣と入替で縦1列をすべて消去",
+      "icon": "↕",
+      "id": "line_5",
+      "name": "縦アロー (Q)",
+      "rank": "Q",
+      "tapActivatable": true
+    },
+    {
+      "bonusScore": 500,
+      "color": "#c084fc",
+      "condition": "T字・L字に5個",
+      "description": "タップまたは隣と入替で横1行をすべて消去",
+      "icon": "↔",
+      "id": "lt_5",
+      "name": "横アロー (K)",
+      "rank": "K",
+      "tapActivatable": true
+    },
+    {
+      "bonusScore": 1000,
+      "color": "#fb7185",
+      "condition": "6個以上つなぐ",
+      "description": "隣のタイルと入替で同じ種類のタイルをすべて消去",
+      "icon": "⚡",
+      "id": "mega_6",
+      "name": "サンダー (A)",
+      "rank": "A",
+      "tapActivatable": false
+    }
+  ],
+  "specialCombos": [
+    {
+      "bonusScore": 800,
+      "color": "#38bdf8",
+      "description": "2枚を中心に周囲28個の長方形エリアを消去",
+      "name": "MEGA BLAST 28",
+      "pair": "J+J"
+    },
+    {
+      "bonusScore": 1000,
+      "color": "#a855f7",
+      "description": "周囲28個を消去し、QまたはKは消えずに盤面へ残る",
+      "name": "ROYAL PRESERVE 28",
+      "pair": "J+Q/K"
+    },
+    {
+      "bonusScore": 1200,
+      "color": "#fbbf24",
+      "description": "Qのある列とその左右の縦3列をすべて消去",
+      "name": "TRIPLE COLUMN",
+      "pair": "Q+Q"
+    },
+    {
+      "bonusScore": 1400,
+      "color": "#f59e0b",
+      "description": "縦2列＋横1行、または縦1列＋横2行をすべて消去",
+      "name": "ROYAL CROSS 3-LINE",
+      "pair": "Q+K"
+    },
+    {
+      "bonusScore": 1200,
+      "color": "#c084fc",
+      "description": "Kのある行とその上下の横3行をすべて消去",
+      "name": "TRIPLE ROW",
+      "pair": "K+K"
+    },
+    {
+      "bonusScore": 3000,
+      "color": "#fb7185",
+      "description": "盤面のタイルをすべて消去（全64マス一掃）",
+      "name": "GRAND FLUSH CLEAR",
+      "pair": "A+A"
+    },
+    {
+      "bonusScore": 1800,
+      "color": "#f43f5e",
+      "description": "ランダムで選ばれた2種類のタイルをすべて消去",
+      "name": "DUAL SUIT ANNIHILATION",
+      "pair": "A+J/Q/K"
+    }
+  ],
+  "stages": [
+    {
+      "description": "スペードとハートを規定数集めよう！",
+      "moves": 20,
+      "objectives": [
+        {
+          "label": "♠ を消す",
+          "suitId": "spade",
+          "target": 25,
+          "type": "collect_suit"
+        },
+        {
+          "label": "♥ を消す",
+          "suitId": "heart",
+          "target": 25,
+          "type": "collect_suit"
+        }
+      ],
+      "stageNumber": 1,
+      "title": "STAGE 1 : ロイヤル・イントロ"
+    },
+    {
+      "crateMap": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "description": "隣接マッチやスキルで8個の木箱をすべて壊そう！",
+      "moves": 22,
+      "objectives": [
+        {
+          "label": "木箱を破壊",
+          "target": 8,
+          "type": "destroy_crates"
+        },
+        {
+          "label": "♦ を消す",
+          "suitId": "diamond",
+          "target": 20,
+          "type": "collect_suit"
+        }
+      ],
+      "stageNumber": 2,
+      "title": "STAGE 2 : 木箱ブレイカー"
+    },
+    {
+      "crateMap": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "description": "2回攻撃で壊れる鉄枠木箱を含む全12個を砕け！",
+      "moves": 25,
+      "objectives": [
+        {
+          "label": "木箱を破壊",
+          "target": 12,
+          "type": "destroy_crates"
+        },
+        {
+          "label": "J/Q/K/A発動",
+          "target": 3,
+          "type": "use_special"
+        }
+      ],
+      "stageNumber": 3,
+      "title": "STAGE 3 : 鉄枠木箱の要塞"
+    }
+  ],
+  "tiles": [
+    {
+      "cornerIndex": "♠",
+      "cssClass": "suit-spade",
+      "id": "spade",
+      "name": "スペード",
+      "scoreWeight": 1.0,
+      "spawnWeight": 23,
+      "symbol": "♠",
+      "type": "standard"
+    },
+    {
+      "cornerIndex": "♥",
+      "cssClass": "suit-heart",
+      "id": "heart",
+      "name": "ハート",
+      "scoreWeight": 1.0,
+      "spawnWeight": 23,
+      "symbol": "♥",
+      "type": "standard"
+    },
+    {
+      "cornerIndex": "♦",
+      "cssClass": "suit-diamond",
+      "id": "diamond",
+      "name": "ダイヤ",
+      "scoreWeight": 1.0,
+      "spawnWeight": 23,
+      "symbol": "♦",
+      "type": "standard"
+    },
+    {
+      "cornerIndex": "♣",
+      "cssClass": "suit-club",
+      "id": "club",
+      "name": "クラブ",
+      "scoreWeight": 1.0,
+      "spawnWeight": 23,
+      "symbol": "♣",
+      "type": "standard"
+    },
+    {
+      "cornerIndex": "★",
+      "cssClass": "suit-joker",
+      "id": "joker",
+      "name": "バイオレットスター",
+      "scoreWeight": 1.0,
+      "spawnWeight": 20,
+      "symbol": "★",
+      "type": "standard"
+    }
+  ]
+}

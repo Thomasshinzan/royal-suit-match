@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Royal Suit Match - トランプ・スリーマッチパズル</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- トップヘッダー -->
+    <header class="header">
+      <h1 class="brand-title">♠ ROYAL SUIT MATCH ♥</h1>
+      <div class="header-actions">
+        <button id="btn-sound" class="icon-btn" title="効果音 ON/OFF">🔊 音: ON</button>
+      </div>
+    </header>
+
+    <!-- スコア・手数・コンボ HUD -->
+    <section class="hud-panel" aria-label="ゲームステータス">
+      <div class="stat-box">
+        <span class="stat-label">SCORE</span>
+        <span id="hud-score" class="stat-value gold">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label" id="hud-mode-label">MOVES</span>
+        <span id="hud-moves" class="stat-value">20</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">COMBO</span>
+        <span id="hud-combo" class="stat-value">x1</span>
+      </div>
+    </section>
+
+    <!-- ステージ情報＆クリア条件パネル -->
+    <section id="stage-panel" class="stage-panel" aria-label="ステージクリア条件">
+      <div class="stage-header-row">
+        <span id="stage-title" class="stage-title">STAGE 1</span>
+        <span id="stage-desc" class="stage-desc">クリア条件を達成しよう</span>
+      </div>
+      <div id="objectives-list" class="objectives-list"></div>
+    </section>
+
+    <!-- 8x8 パズル盤面 -->
+    <main class="board-frame">
+      <div id="board-container" class="board-container">
+        <div id="grid-bg" class="grid-bg"></div>
+        <div id="tile-layer" class="tile-layer"></div>
+        <div id="fx-layer" class="fx-layer"></div>
+
+        <!-- オーバーレイ（シャッフル通知 / ゲーム終了画面） -->
+        <div id="board-overlay" class="board-overlay">
+          <div id="overlay-title" class="overlay-title">STAGE CLEAR!</div>
+          <div id="overlay-sub" class="overlay-sub">クリア条件を達成しました！</div>
+          <button id="btn-overlay-restart" class="btn-primary">次のステージへ</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- 下部アクションボタン -->
+    <footer class="controls-bar">
+      <button id="btn-stage-select" class="icon-btn">🚩 ステージ: 1 / 3</button>
+      <button id="btn-reset" class="btn-primary">↻ やり直す</button>
+    </footer>
+  </div>
+
+  <!-- 3分割されたゲームスクリプトを順番に読み込み -->
+  <script src="soundAndConfig.js"></script>
+  <script src="boardLogic.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
