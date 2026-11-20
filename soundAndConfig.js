@@ -137,6 +137,26 @@ const DEFAULT_GAME_CONFIG = {
         { type: "destroy_crates", target: 12, label: "木箱を破壊" },
         { type: "collect_suit", suitId: "diamond", target: 20, label: "♦ を消す" }
       ]
+    },
+    {
+      stageNumber: 7,
+      title: "STAGE 7 : スター・ホール",
+      description: "四隅と中央の穴に気をつけて、♣24個と★20個を集めよう！",
+      moves: 25,
+      holeMap: [
+        [1, 0, 0, 0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 0, 0, 0, 1]
+      ],
+      objectives: [
+        { type: "collect_suit", suitId: "club", target: 24, label: "♣ を消す" },
+        { type: "collect_suit", suitId: "joker", target: 20, label: "★ を消す" }
+      ]
     }
   ]
 };
