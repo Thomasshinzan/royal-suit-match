@@ -161,7 +161,7 @@ const DEFAULT_GAME_CONFIG = {
     {
       stageNumber: 8,
       title: "STAGE 8 : クラウン・ドロップ",
-      description: "破壊できない👑クラウンが最上段に8個！下のタイルを消して、一番下まで落とそう！",
+      description: "破壊できない👑クラウンが最上段に8個！入れ替えでも動かせるよ。下のタイルを消して、一番下まで落とそう！",
       moves: 50,
       tokenMap: [
         [1, 1, 1, 1, 1, 1, 1, 1],

@@ -183,7 +183,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     this.updateHUD();
     this.updateStageObjectivesUI();
-    if (!this.findValidMove()) this.shuffleBoard();
+    this.ensurePlayableBoard();
     return true;
   }
 
@@ -340,7 +340,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         else targetR += dy > 0 ? 1 : -1;
 
         this.clearSelection();
-        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC) && !this.isTokenCell(origin.r, origin.c) && !this.isTokenCell(targetR, targetC)) {
+        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC)) {
           this.attemptSwap(origin, { r: targetR, c: targetC });
         }
       }
@@ -387,7 +387,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
   async handleCellTap(cell) {
     const tappedTile = this.grid[cell.r]?.[cell.c];
-    if (!tappedTile || tappedTile.isCrate || tappedTile.isToken) return;
+    if (!tappedTile || tappedTile.isCrate) return;
 
     if (this.selectedCell) {
       if (this.selectedCell.r === cell.r && this.selectedCell.c === cell.c) {
@@ -433,7 +433,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     await this.triggerSpecialActivationsAndCascade([trigger]);
 
     if (!this.evaluateStageEndState()) {
-      if (!this.findValidMove()) await this.shuffleBoard();
+      await this.ensurePlayableBoard();
     }
     this.isBusy = false;
   }
@@ -485,14 +485,14 @@ class RoyalMatchGame extends RoyalMatchBoard {
       }
     }
 
-    if (!this.findValidMove()) this.shuffleBoard();
+    this.ensurePlayableBoard();
     this.updateHUD();
     this.updateStageObjectivesUI();
     this.saveGame();
   }
 
   async attemptSwap(posA, posB) {
-    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c) || this.isTokenCell(posA.r, posA.c) || this.isTokenCell(posB.r, posB.c)) return;
+    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c)) return;
     this.isBusy = true;
     this.sound.playSwap();
 
@@ -518,7 +518,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       );
 
       if (!this.evaluateStageEndState()) {
-        if (!this.findValidMove()) await this.shuffleBoard();
+        await this.ensurePlayableBoard();
       }
       this.isBusy = false;
       return;
@@ -531,17 +531,17 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
       const initialTriggers = [];
       if (movedA?.specialId) {
-        initialTriggers.push({ r: posB.r, c: posB.c, specialId: movedA.specialId, swappedWithSuitId: movedB?.def.id || null });
+        initialTriggers.push({ r: posB.r, c: posB.c, specialId: movedA.specialId, swappedWithSuitId: movedB?.isToken ? null : (movedB?.def.id || null) });
       }
       if (movedB?.specialId) {
-        initialTriggers.push({ r: posA.r, c: posA.c, specialId: movedB.specialId, swappedWithSuitId: movedA?.def.id || null });
+        initialTriggers.push({ r: posA.r, c: posA.c, specialId: movedB.specialId, swappedWithSuitId: movedA?.isToken ? null : (movedA?.def.id || null) });
       }
 
       const simultaneousMatches = this.findAllMatches();
       await this.triggerSpecialActivationsAndCascade(initialTriggers, simultaneousMatches);
 
       if (!this.evaluateStageEndState()) {
-        if (!this.findValidMove()) await this.shuffleBoard();
+        await this.ensurePlayableBoard();
       }
       this.isBusy = false;
       return;
@@ -565,7 +565,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.lastSwappedCells = [];
 
     if (!this.evaluateStageEndState()) {
-      if (!this.findValidMove()) await this.shuffleBoard();
+      await this.ensurePlayableBoard();
     }
 
     this.isBusy = false;
@@ -924,7 +924,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         for (let row = 0; row < this.rows; row++) {
           for (let col = 0; col < this.cols; col++) {
             const t = this.grid[row][col];
-            if (t && !t.isCrate && !(row === r && col === c)) presentSuits.add(t.def.id);
+            if (t && !t.isCrate && !t.isToken && !(row === r && col === c)) presentSuits.add(t.def.id);
           }
         }
         const arr = Array.from(presentSuits);

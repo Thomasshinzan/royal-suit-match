@@ -89,8 +89,8 @@ class RoyalMatchBoard {
     return Boolean(this.grid[r]?.[c]?.isToken);
   }
 
-  // 破壊不可能トークン（👑クラウン）。マッチ・スペシャル・入れ替えの
-  // 対象にならず、重力でのみ落下する。最下段まで落ちたら回収される。
+  // 破壊不可能トークン（👑クラウン）。マッチやスペシャルでは消えないが、
+  // 入れ替えで動かすことはできる。最下段まで落ちたら回収される。
   createTokenObject(row, col) {
     const uid = this.nextTileUid++;
     const el = document.createElement('div');
@@ -445,19 +445,26 @@ class RoyalMatchBoard {
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const curr = this.grid[r][c];
-        if (!curr || curr.isCrate || curr.isToken) continue;
+        if (!curr || curr.isCrate) continue;
+
+        if (curr.isToken) {
+          // クラウン自体はマッチしないが、相手タイルがマッチするなら有効な手
+          if (c + 1 < this.cols && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) return [{ r, c }, { r, c: c + 1 }];
+          if (r + 1 < this.rows && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) return [{ r, c }, { r: r + 1, c }];
+          continue;
+        }
 
         if (curr.specialId) {
-          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.isTokenCell(r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
-          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1) && !this.isTokenCell(r, c - 1)) return [{ r, c }, { r, c: c - 1 }];
-          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && !this.isTokenCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
-          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c) && !this.isTokenCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
+          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
+          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1)) return [{ r, c }, { r, c: c - 1 }];
+          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
+          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
         }
 
-        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.isTokenCell(r, c + 1) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
+        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
           return [{ r, c }, { r, c: c + 1 }];
         }
-        if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && !this.isTokenCell(r + 1, c) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) {
+        if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) {
           return [{ r, c }, { r: r + 1, c }];
         }
       }
@@ -468,7 +475,7 @@ class RoyalMatchBoard {
   wouldMatchAfterSwap(posA, posB) {
     const tempA = this.grid[posA.r][posA.c];
     const tempB = this.grid[posB.r][posB.c];
-    if (!tempA || !tempB || tempA.isCrate || tempB.isCrate || tempA.isToken || tempB.isToken || tempA.def.id === tempB.def.id) return false;
+    if (!tempA || !tempB || tempA.isCrate || tempB.isCrate || tempA.def.id === tempB.def.id) return false;
     this.grid[posA.r][posA.c] = tempB;
     this.grid[posB.r][posB.c] = tempA;
     const hasMatch = this.findAllMatches().cells.length > 0;
@@ -477,23 +484,30 @@ class RoyalMatchBoard {
     return hasMatch;
   }
 
+  // 詰み盤面の自動判定：有効な手がなければ自動でシャッフルする
+  async ensurePlayableBoard() {
+    if (this.findValidMove()) return false;
+    await this.shuffleBoard();
+    return true;
+  }
+
   async shuffleBoard() {
     this.showOverlay('SHUFFLE!', '有効な手がなくなったためカードをシャッフルします');
     await this.sleep(950);
 
+    // 木箱とクラウンは動かさない（クラウンの落下進捗を保つため）
     const movableCoords = [];
-    const movableTiles = [];
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         if (this.grid[r][c] && !this.grid[r][c].isCrate && !this.grid[r][c].isToken) {
           movableCoords.push({ r, c });
-          movableTiles.push(this.grid[r][c]);
         }
       }
     }
+    let movableTiles = movableCoords.map(pos => this.grid[pos.r][pos.c]);
 
-    let attempts = 0;
-    do {
+    const isPlayable = () => this.findAllMatches().cells.length === 0 && Boolean(this.findValidMove());
+    const shuffleOnce = () => {
       for (let i = movableTiles.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [movableTiles[i], movableTiles[j]] = [movableTiles[j], movableTiles[i]];
@@ -501,8 +515,25 @@ class RoyalMatchBoard {
       movableCoords.forEach((pos, idx) => {
         this.grid[pos.r][pos.c] = movableTiles[idx];
       });
-      attempts++;
-    } while ((this.findAllMatches().cells.length > 0 || !this.findValidMove()) && attempts < 50);
+    };
+
+    // まず並べ替えで解を探し、見つからなければタイル自体を
+    // 引き直して（スペシャルは保持）必ず手がある盤面にする
+    let rerolls = 0;
+    while (!isPlayable() && rerolls <= 10) {
+      for (let i = 0; i < 50 && !isPlayable(); i++) shuffleOnce();
+      if (isPlayable()) break;
+
+      rerolls++;
+      movableTiles = movableCoords.map(pos => {
+        const old = this.grid[pos.r][pos.c];
+        const specialId = old?.specialId || null;
+        if (old) old.el.remove();
+        const fresh = this.createTileObject(this.getRandomTileDef(), pos.r, pos.c, pos.r, specialId);
+        this.grid[pos.r][pos.c] = fresh;
+        return fresh;
+      });
+    }
 
     for (const pos of movableCoords) {
       this.updateTilePosition(this.grid[pos.r][pos.c], pos.r, pos.c, false);
