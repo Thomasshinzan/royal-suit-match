@@ -1269,6 +1269,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.warn('外部 gameConfig.json の取得をスキップし、内蔵フォールバック設定を使用します:', err);
   }
 
+  // ステージ構成は stages.js (STAGES) が唯一の置き場所
+  gameConfig = { ...gameConfig, stages: (typeof STAGES !== 'undefined' ? STAGES : []) };
+
   try {
     window.royalMatchApp = new RoyalMatchGame(gameConfig);
   } catch (err) {

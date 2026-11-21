@@ -6,7 +6,7 @@ class RoyalMatchBoard {
     this.config = configData.boardConfig;
     this.tileDefs = configData.tiles;
     this.specialDefs = configData.specialCards || [];
-    this.stages = configData.stages || DEFAULT_GAME_CONFIG.stages;
+    this.stages = configData.stages || (typeof STAGES !== 'undefined' ? STAGES : []);
 
     this.tileMap = new Map(this.tileDefs.map(t => [t.id, t]));
     this.specialMap = new Map(this.specialDefs.map(s => [s.id, s]));
