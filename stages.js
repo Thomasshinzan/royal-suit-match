@@ -2011,7 +2011,7 @@ const STAGES = [
     "stageNumber": 17,
     "title": "STAGE 17 : 仕切りフローズン",
     "description": "仕切りの右側に凍結タイルが10枚！横からは入れ替えできないから、右側のマッチとスペシャルで氷を溶かそう。♣も20枚集めてね！",
-    "moves": 30,
+    "moves": 20,
     "objectives": [
       {
         "type": "thaw_frozen",
