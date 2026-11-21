@@ -6,7 +6,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     super(configData);
 
     this.currentStageIndex = 0;
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0 };
+    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0 };
     this.stageActionType = 'restart';
 
     this.stageTitleEl = document.getElementById('stage-title');
@@ -71,7 +71,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         if (!tile) return null;
         if (tile.isCrate) return { type: 'crate', hp: tile.hp };
         if (tile.isToken) return { type: 'token' };
-        return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null };
+        return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null, frozen: tile.isFrozen ? 1 : 0 };
       }));
       const data = {
         version: 1,
@@ -156,8 +156,9 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.combo = save.combo || 0;
     this.isBusy = false;
     this.lastSwappedCells = [];
-    this.stageProgress = save.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0 };
+    this.stageProgress = save.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0 };
     if (typeof this.stageProgress.tokensDropped !== 'number') this.stageProgress.tokensDropped = 0;
+    if (typeof this.stageProgress.thawedCount !== 'number') this.stageProgress.thawedCount = 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     this.setHoleMap(stage.holeMap || null);
     this.setPartitionMap(stage.partitionMap || null);
@@ -176,6 +177,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
           const def = this.tileMap.get(cell.defId);
           if (!def) return false;
           this.grid[r][c] = this.createTileObject(def, r, c, r, cell.specialId || null);
+          if (cell.frozen) this.setTileFrozen(this.grid[r][c]);
         } else {
           return false;
         }
@@ -225,6 +227,9 @@ class RoyalMatchGame extends RoyalMatchBoard {
       } else if (obj.type === 'drop_token') {
         currentVal = this.stageProgress.tokensDropped || 0;
         iconHtml = '👑';
+      } else if (obj.type === 'thaw_frozen') {
+        currentVal = this.stageProgress.thawedCount || 0;
+        iconHtml = '❄️';
       }
 
       const isDone = currentVal >= obj.target;
@@ -249,6 +254,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       if (obj.type === 'use_special') return this.stageProgress.specialUsedCount >= obj.target;
       if (obj.type === 'destroy_crates') return this.stageProgress.cratesDestroyed >= obj.target;
       if (obj.type === 'drop_token') return (this.stageProgress.tokensDropped || 0) >= obj.target;
+      if (obj.type === 'thaw_frozen') return (this.stageProgress.thawedCount || 0) >= obj.target;
       return false;
     });
   }
@@ -265,6 +271,24 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
   recordTokenDroppedProgress(count = 1) {
     this.stageProgress.tokensDropped = (this.stageProgress.tokensDropped || 0) + count;
+  }
+
+  recordThawProgress(count = 1) {
+    this.stageProgress.thawedCount = (this.stageProgress.thawedCount || 0) + count;
+  }
+
+  // タイルを消す処理：凍結タイルは消えずに凍結解除だけされる
+  removeOrThawTile(tile, r, c) {
+    if (!tile) return;
+    if (tile.isFrozen) {
+      this.thawTile(tile);
+      this.recordThawProgress();
+      this.updateStageObjectivesUI();
+      return;
+    }
+    this.recordRemovedTileProgress(tile);
+    tile.el.remove();
+    this.grid[r][c] = null;
   }
 
   recordCrateDestroyedProgress(count = 1) {
@@ -341,7 +365,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         else targetR += dy > 0 ? 1 : -1;
 
         this.clearSelection();
-        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC)) {
+        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC) && !this.isFrozenCell(origin.r, origin.c) && !this.isFrozenCell(targetR, targetC)) {
           this.attemptSwap(origin, { r: targetR, c: targetC });
         }
       }
@@ -388,7 +412,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
   async handleCellTap(cell) {
     const tappedTile = this.grid[cell.r]?.[cell.c];
-    if (!tappedTile || tappedTile.isCrate) return;
+    if (!tappedTile || tappedTile.isCrate || tappedTile.isFrozen) return;
 
     if (this.selectedCell) {
       if (this.selectedCell.r === cell.r && this.selectedCell.c === cell.c) {
@@ -453,7 +477,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.combo = 0;
     this.isBusy = false;
     this.lastSwappedCells = [];
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0 };
+    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0 };
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const crateMap = stage.crateMap || null;
     const tokenMap = stage.tokenMap || null;
@@ -487,6 +511,16 @@ class RoyalMatchGame extends RoyalMatchBoard {
       }
     }
 
+    const frozenMap = stage.frozenMap || null;
+    if (frozenMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          if (frozenMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileFrozen(tile);
+        }
+      }
+    }
+
     this.ensurePlayableBoard();
     this.updateHUD();
     this.updateStageObjectivesUI();
@@ -494,7 +528,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
   }
 
   async attemptSwap(posA, posB) {
-    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c) || this.hasPartitionBetween(posA, posB)) return;
+    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c) || this.isFrozenCell(posA.r, posA.c) || this.isFrozenCell(posB.r, posB.c) || this.hasPartitionBetween(posA, posB)) return;
     this.isBusy = true;
     this.sound.playSwap();
 
@@ -775,12 +809,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     await this.sleep(this.config.timingsMs.matchPop);
 
     for (const { r, c } of cardTargets) {
-      const tile = this.grid[r][c];
-      if (tile) {
-        this.recordRemovedTileProgress(tile);
-        tile.el.remove();
-        this.grid[r][c] = null;
-      }
+      this.removeOrThawTile(this.grid[r][c], r, c);
     }
     this.updateStageObjectivesUI();
 
@@ -856,10 +885,12 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     const pickPivotCell = (cells) => {
       for (const sw of this.lastSwappedCells) {
-        const found = cells.find(cell => cell.r === sw.r && cell.c === sw.c);
+        const found = cells.find(cell => cell.r === sw.r && cell.c === sw.c && !this.grid[cell.r]?.[cell.c]?.isFrozen);
         if (found) return found;
       }
-      return cells[Math.floor(cells.length / 2)];
+      const nonFrozen = cells.filter(cell => !this.grid[cell.r]?.[cell.c]?.isFrozen);
+      const pool = nonFrozen.length > 0 ? nonFrozen : cells;
+      return pool[Math.floor(pool.length / 2)];
     };
 
     for (const group of groups) {
@@ -1033,12 +1064,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     await this.sleep(this.config.timingsMs.matchPop);
 
     for (const { r, c } of cardTargets) {
-      const tile = this.grid[r][c];
-      if (tile) {
-        this.recordRemovedTileProgress(tile);
-        tile.el.remove();
-        this.grid[r][c] = null;
-      }
+      this.removeOrThawTile(this.grid[r][c], r, c);
     }
     this.updateStageObjectivesUI();
 
@@ -1232,18 +1258,14 @@ class RoyalMatchGame extends RoyalMatchBoard {
       await this.sleep(this.config.timingsMs.matchPop);
 
       for (const { r, c } of cardTargets) {
-        const tile = this.grid[r][c];
-        if (tile) {
-          this.recordRemovedTileProgress(tile);
-          tile.el.remove();
-          this.grid[r][c] = null;
-        }
+        this.removeOrThawTile(this.grid[r][c], r, c);
       }
       this.updateStageObjectivesUI();
 
       for (const plan of spawnPlans) {
         const tile = this.grid[plan.r]?.[plan.c];
         if (tile) {
+          if (tile.isFrozen) { this.thawTile(tile); this.recordThawProgress(); }
           this.upgradeTileToSpecial(tile, plan.specialId);
           this.sound.playSkill(plan.specialId);
         }

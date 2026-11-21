@@ -130,6 +130,26 @@ class RoyalMatchBoard {
     return Boolean(this.grid[r]?.[c]?.isToken);
   }
 
+  isFrozenCell(r, c) {
+    return Boolean(this.grid[r]?.[c]?.isFrozen);
+  }
+
+  // 凍結タイル：通常タイルに氷が付いた状態。入れ替えできず、
+  // 消去される代わりに凍結が解除される（重力では落ちる）。
+  setTileFrozen(tile) {
+    if (!tile) return;
+    tile.isFrozen = true;
+    tile.el.classList.add('frozen-tile');
+  }
+
+  thawTile(tile) {
+    if (!tile) return;
+    tile.isFrozen = false;
+    tile.el.classList.remove('frozen-tile');
+    tile.el.classList.remove('matched');
+    tile.el.classList.remove('skill-targeted');
+  }
+
   // 破壊不可能トークン（👑クラウン）。マッチやスペシャルでは消えないが、
   // 入れ替えで動かすことはできる。最下段まで落ちたら回収される。
   createTokenObject(row, col) {
@@ -486,7 +506,7 @@ class RoyalMatchBoard {
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const curr = this.grid[r][c];
-        if (!curr || curr.isCrate) continue;
+        if (!curr || curr.isCrate || curr.isFrozen) continue;
 
         if (curr.isToken) {
           // クラウン自体はマッチしないが、相手タイルがマッチするなら有効な手
@@ -496,10 +516,10 @@ class RoyalMatchBoard {
         }
 
         if (curr.specialId) {
-          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 })) return [{ r, c }, { r, c: c + 1 }];
-          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1) && !this.hasPartitionBetween({ r, c }, { r, c: c - 1 })) return [{ r, c }, { r, c: c - 1 }];
-          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
-          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
+          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.isFrozenCell(r, c + 1) && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 })) return [{ r, c }, { r, c: c + 1 }];
+          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1) && !this.isFrozenCell(r, c - 1) && !this.hasPartitionBetween({ r, c }, { r, c: c - 1 })) return [{ r, c }, { r, c: c - 1 }];
+          if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && !this.isFrozenCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
+          if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c) && !this.isFrozenCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
         }
 
         if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 }) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
@@ -516,7 +536,7 @@ class RoyalMatchBoard {
   wouldMatchAfterSwap(posA, posB) {
     const tempA = this.grid[posA.r][posA.c];
     const tempB = this.grid[posB.r][posB.c];
-    if (!tempA || !tempB || tempA.isCrate || tempB.isCrate || tempA.def.id === tempB.def.id) return false;
+    if (!tempA || !tempB || tempA.isCrate || tempB.isCrate || tempA.isFrozen || tempB.isFrozen || tempA.def.id === tempB.def.id) return false;
     this.grid[posA.r][posA.c] = tempB;
     this.grid[posB.r][posB.c] = tempA;
     const hasMatch = this.findAllMatches().cells.length > 0;
@@ -540,7 +560,7 @@ class RoyalMatchBoard {
     const movableCoords = [];
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
-        if (this.grid[r][c] && !this.grid[r][c].isCrate && !this.grid[r][c].isToken) {
+        if (this.grid[r][c] && !this.grid[r][c].isCrate && !this.grid[r][c].isToken && !this.grid[r][c].isFrozen) {
           movableCoords.push({ r, c });
         }
       }

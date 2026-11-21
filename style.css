@@ -724,3 +724,19 @@ body::before {
   box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
   pointer-events: none;
 }
+
+.card-tile.frozen-tile::after {
+  content: '❄';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(147, 197, 253, 0.45);
+  border: 2px solid rgba(224, 242, 254, 0.95);
+  border-radius: inherit;
+  font-size: 1.05rem;
+  color: #f0f9ff;
+  text-shadow: 0 0 4px rgba(56, 189, 248, 0.9);
+  pointer-events: none;
+}
