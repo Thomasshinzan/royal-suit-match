@@ -16,6 +16,8 @@ class RoyalMatchBoard {
 
     this.grid = [];
     this.holeSet = new Set();
+    this.partitionSet = new Set();
+    this.partitionEls = [];
     this.score = 0;
     this.moves = this.config.initialMoves;
     this.combo = 0;
@@ -79,6 +81,45 @@ class RoyalMatchBoard {
       const c = i % this.cols;
       cell.classList.toggle('hole-cell', this.isHoleCell(r, c));
     });
+  }
+
+  // パーティション（仕切り）。partitionMap の 1 は、そのセルの右隣との
+  // 間に仕切りがあることを表す。仕切り越しの横入れ替えはできない
+  // （マッチ判定やスペシャルの効果は仕切りを越える）。
+  setPartitionMap(partitionMap) {
+    this.partitionSet = new Set();
+    if (partitionMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          if (partitionMap[r]?.[c]) this.partitionSet.add(`${r},${c}`);
+        }
+      }
+    }
+    this.renderPartitions();
+  }
+
+  hasPartitionBetween(posA, posB) {
+    if (!posA || !posB || posA.r !== posB.r || Math.abs(posA.c - posB.c) !== 1) return false;
+    const left = posA.c < posB.c ? posA : posB;
+    return this.partitionSet.has(`${left.r},${left.c}`);
+  }
+
+  renderPartitions() {
+    if (!this.fxLayer) return;
+    for (const el of this.partitionEls) el.remove();
+    this.partitionEls = [];
+    const cellW = 100 / this.cols;
+    const cellH = 100 / this.rows;
+    for (const key of this.partitionSet) {
+      const [r, c] = key.split(',').map(Number);
+      const el = document.createElement('div');
+      el.className = 'partition-wall';
+      el.style.left = `${(c + 1) * cellW}%`;
+      el.style.top = `${r * cellH}%`;
+      el.style.height = `${cellH}%`;
+      this.fxLayer.appendChild(el);
+      this.partitionEls.push(el);
+    }
   }
 
   isCrateCell(r, c) {
@@ -449,19 +490,19 @@ class RoyalMatchBoard {
 
         if (curr.isToken) {
           // クラウン自体はマッチしないが、相手タイルがマッチするなら有効な手
-          if (c + 1 < this.cols && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) return [{ r, c }, { r, c: c + 1 }];
+          if (c + 1 < this.cols && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 }) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) return [{ r, c }, { r, c: c + 1 }];
           if (r + 1 < this.rows && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) return [{ r, c }, { r: r + 1, c }];
           continue;
         }
 
         if (curr.specialId) {
-          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
-          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1)) return [{ r, c }, { r, c: c - 1 }];
+          if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 })) return [{ r, c }, { r, c: c + 1 }];
+          if (c - 1 >= 0 && !this.isCrateCell(r, c - 1) && !this.isHoleCell(r, c - 1) && !this.hasPartitionBetween({ r, c }, { r, c: c - 1 })) return [{ r, c }, { r, c: c - 1 }];
           if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c)) return [{ r, c }, { r: r + 1, c }];
           if (r - 1 >= 0 && !this.isCrateCell(r - 1, c) && !this.isHoleCell(r - 1, c)) return [{ r, c }, { r: r - 1, c }];
         }
 
-        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
+        if (c + 1 < this.cols && !this.isCrateCell(r, c + 1) && !this.isHoleCell(r, c + 1) && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 }) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) {
           return [{ r, c }, { r, c: c + 1 }];
         }
         if (r + 1 < this.rows && !this.isCrateCell(r + 1, c) && !this.isHoleCell(r + 1, c) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) {

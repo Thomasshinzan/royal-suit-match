@@ -160,6 +160,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     if (typeof this.stageProgress.tokensDropped !== 'number') this.stageProgress.tokensDropped = 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     this.setHoleMap(stage.holeMap || null);
+    this.setPartitionMap(stage.partitionMap || null);
 
     for (let r = 0; r < this.rows; r++) {
       if (!Array.isArray(save.grid[r]) || save.grid[r].length !== this.cols) return false;
@@ -457,6 +458,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     const crateMap = stage.crateMap || null;
     const tokenMap = stage.tokenMap || null;
     this.setHoleMap(stage.holeMap || null);
+    this.setPartitionMap(stage.partitionMap || null);
 
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
@@ -492,7 +494,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
   }
 
   async attemptSwap(posA, posB) {
-    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c)) return;
+    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c) || this.hasPartitionBetween(posA, posB)) return;
     this.isBusy = true;
     this.sound.playSwap();
 

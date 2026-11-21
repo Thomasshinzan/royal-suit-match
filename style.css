@@ -714,3 +714,13 @@ body::before {
 .btn-primary:active {
   transform: scale(0.96);
 }
+
+.partition-wall {
+  position: absolute;
+  width: 7px;
+  margin-left: -3.5px;
+  background: linear-gradient(90deg, #92400e, #f59e0b, #92400e);
+  border-radius: 4px;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
+  pointer-events: none;
+}
