@@ -440,7 +440,7 @@ const DEFAULT_GAME_CONFIG = {
       "stageNumber": 10,
       "title": "STAGE 10 : パーティション",
       "description": "タイルの間に仕切りが登場！仕切り越しには入れ替えできないよ。縦の動きと上下の通り道をうまく使おう！",
-      "moves": 28,
+      "moves": 24,
       "objectives": [
         {
           "type": "collect_suit",
