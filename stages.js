@@ -1834,7 +1834,7 @@ const STAGES = [
     "stageNumber": 16,
     "title": "STAGE 16 : クラウン・フロア",
     "description": "床の上に乗った王冠は下に落ちられない！横にずらして床より下の段へ逃がし、王冠6個を全部落とそう！",
-    "moves": 50,
+    "moves": 55,
     "objectives": [
       {
         "type": "drop_token",
@@ -1969,8 +1969,8 @@ const STAGES = [
         0,
         0,
         0,
-        1,
-        1,
+        0,
+        0,
         0,
         0,
         0
