@@ -1084,7 +1084,7 @@ const STAGES = [
     "stageNumber": 11,
     "title": "STAGE 11 : 仕切り要塞",
     "description": "仕切りで守られた木箱の要塞！横の入れ替えが制限されるから、縦の連鎖とスペシャルで木箱12個を壊そう。♥も20枚集めてね！",
-    "moves": 30,
+    "moves": 25,
     "objectives": [
       {
         "type": "destroy_crates",
