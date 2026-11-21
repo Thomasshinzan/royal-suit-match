@@ -2193,13 +2193,13 @@ const STAGES = [
   {
     "stageNumber": 18,
     "title": "STAGE 18 : スコアアタック・リターンズ",
-    "description": "30手で28000点を目指そう！コンボとスペシャルをつなげて稼げ！",
+    "description": "30手で45000点を目指そう！コンボとスペシャルをつなげて稼げ！",
     "moves": 30,
     "objectives": [
       {
         "type": "score",
-        "target": 28000,
-        "label": "スコア 28000"
+        "target": 45000,
+        "label": "スコア 45000"
       }
     ]
   }
