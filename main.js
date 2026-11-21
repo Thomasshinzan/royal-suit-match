@@ -162,6 +162,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     this.setHoleMap(stage.holeMap || null);
     this.setPartitionMap(stage.partitionMap || null);
+    this.setPartitionHMap(stage.partitionHMap || null);
 
     for (let r = 0; r < this.rows; r++) {
       if (!Array.isArray(save.grid[r]) || save.grid[r].length !== this.cols) return false;
@@ -483,6 +484,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     const tokenMap = stage.tokenMap || null;
     this.setHoleMap(stage.holeMap || null);
     this.setPartitionMap(stage.partitionMap || null);
+    this.setPartitionHMap(stage.partitionHMap || null);
 
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {

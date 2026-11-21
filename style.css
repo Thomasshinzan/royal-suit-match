@@ -740,3 +740,13 @@ body::before {
   text-shadow: 0 0 4px rgba(56, 189, 248, 0.9);
   pointer-events: none;
 }
+
+.partition-wall-h {
+  position: absolute;
+  height: 7px;
+  margin-top: -3.5px;
+  background: linear-gradient(180deg, #92400e, #f59e0b, #92400e);
+  border-radius: 4px;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
+  pointer-events: none;
+}
