@@ -2390,7 +2390,7 @@ const STAGES = [
     "stageNumber": 20,
     "title": "STAGE 20 : グランドフィナーレ",
     "description": "最終ステージ！穴・木箱・王冠・仕切り・床・凍結、全部入り。王冠4個を落として、木箱4個を壊して、凍結8枚を溶かそう！",
-    "moves": 55,
+    "moves": 40,
     "objectives": [
       {
         "type": "drop_token",
