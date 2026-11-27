@@ -2900,5 +2900,18 @@ const STAGES = [
         0
       ]
     ]
+  },
+  {
+      "description": "スペシャルタイル同士をぶつけて、コンボを3回発生させよう！",
+    "moves": 40,
+    "objectives": [
+      {
+          "label": "スペシャルコンボ",
+        "target": 3,
+        "type": "special_combo"
+      },
+  ],
+    "stageNumber": 21,
+    "title": "STAGE 21 : コンボ・マエストロ"
   }
 ];
