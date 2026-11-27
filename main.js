@@ -159,7 +159,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.stageProgress = save.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0 };
     if (typeof this.stageProgress.tokensDropped !== 'number') this.stageProgress.tokensDropped = 0;
     if (typeof this.stageProgress.thawedCount !== 'number') this.stageProgress.thawedCount = 0;
-    if (typeof this.stageProgress.comboCount !=== 'number') this.stageProgress.comboCount = 0;
+    if (typeof this.stageProgress.comboCount !== 'number') this.stageProgress.comboCount = 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     this.setHoleMap(stage.holeMap || null);
     this.setPartitionMap(stage.partitionMap || null);
