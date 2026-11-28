@@ -38,6 +38,7 @@ class RoyalMatchBoard {
     this.nextTileUid = 1;
     this.dragStart = null;
     this.flipSuitId = null;
+    this.flipPhase = 'star';
 
     this.boardContainer = document.getElementById('board-container');
     this.gridBg = document.getElementById('grid-bg');
@@ -274,7 +275,8 @@ class RoyalMatchBoard {
   setTileFlip(tile) {
     if (!tile || tile.isCrate || tile.isToken || tile.specialId) return;
     tile.isFlip = true;
-    tile.flipForm = 'star';
+    // 新しく変転タイルになるものも、盤面の現在のフェイズに合わせる
+    tile.flipForm = this.flipPhase || 'star';
     this.refreshFlipVisual(tile);
   }
 
@@ -298,13 +300,15 @@ class RoyalMatchBoard {
     if (suitEl) suitEl.textContent = tile.def.symbol;
   }
 
-  // 手を1つ消費し終えた後に呼ぶ：盤面の変転タイルをすべて反転させる
+  // 手を1つ消費し終えた後に呼ぶ：フェイズを切り替え、盤面の変転タイルを
+  // すべて同じ形態に揃える（途中で出現したタイルも必ず同じ形態になる）
   flipTiles() {
+    this.flipPhase = this.flipPhase === 'block' ? 'star' : 'block';
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const tile = this.grid[r][c];
         if (!tile?.isFlip || tile.specialId) continue;
-        tile.flipForm = tile.flipForm === 'star' ? 'block' : 'star';
+        tile.flipForm = this.flipPhase;
         this.refreshFlipVisual(tile);
       }
     }

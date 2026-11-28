@@ -80,6 +80,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         moves: this.moves,
         combo: this.combo,
         stageProgress: this.stageProgress,
+        flipPhase: this.flipPhase || 'star',
         grid: gridData
       };
       localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify(data));
@@ -163,6 +164,8 @@ class RoyalMatchGame extends RoyalMatchBoard {
     if (typeof this.stageProgress.starErasedCount !== 'number') this.stageProgress.starErasedCount = 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     this.flipSuitId = stage.flipSuitId || null;
+    // フェイズはセーブから復元する（旧セーブでは変転タイルの形態から推定）
+    this.flipPhase = save.flipPhase || save.grid.flat().find(cell => cell?.flip)?.flip || 'star';
     this.setHoleMap(stage.holeMap || null);
     this.setPartitionMap(stage.partitionMap || null);
     this.setPartitionHMap(stage.partitionHMap || null);
@@ -194,12 +197,20 @@ class RoyalMatchGame extends RoyalMatchBoard {
       }
     }
 
-    // 変転スートのタイルで変転化していないものがあれば揃える
+    // 変転タイルの形態をフェイズに統一する（旧セーブの混在状態もここで揃える）
     if (this.flipSuitId) {
       for (let r = 0; r < this.rows; r++) {
         for (let c = 0; c < this.cols; c++) {
           const tile = this.grid[r][c];
-          if (tile && !tile.isFlip && !tile.specialId && tile.def.id === this.flipSuitId) this.setTileFlip(tile);
+          if (!tile) continue;
+          if (tile.isFlip) {
+            if (tile.flipForm !== this.flipPhase) {
+              tile.flipForm = this.flipPhase;
+              this.refreshFlipVisual(tile);
+            }
+          } else if (!tile.specialId && tile.def.id === this.flipSuitId) {
+            this.setTileFlip(tile);
+          }
         }
       }
     }
@@ -527,6 +538,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.lastSwappedCells = [];
     this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0, starErasedCount: 0 };
     this.flipSuitId = stage.flipSuitId || null;
+    this.flipPhase = 'star';
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const crateMap = stage.crateMap || null;
     const tokenMap = stage.tokenMap || null;
