@@ -162,7 +162,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     if (typeof this.stageProgress.comboCount !== 'number') this.stageProgress.comboCount = 0;
     if (typeof this.stageProgress.starErasedCount !== 'number') this.stageProgress.starErasedCount = 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
-    this.flipSpawnRate = stage.flipSpawnRate || 0;
+    this.flipSuitId = stage.flipSuitId || null;
     this.setHoleMap(stage.holeMap || null);
     this.setPartitionMap(stage.partitionMap || null);
     this.setPartitionHMap(stage.partitionHMap || null);
@@ -190,6 +190,16 @@ class RoyalMatchGame extends RoyalMatchBoard {
           }
         } else {
           return false;
+        }
+      }
+    }
+
+    // 変転スートのタイルで変転化していないものがあれば揃える
+    if (this.flipSuitId) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          if (tile && !tile.isFlip && !tile.specialId && tile.def.id === this.flipSuitId) this.setTileFlip(tile);
         }
       }
     }
@@ -516,7 +526,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.isBusy = false;
     this.lastSwappedCells = [];
     this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0, starErasedCount: 0 };
-    this.flipSpawnRate = stage.flipSpawnRate || 0;
+    this.flipSuitId = stage.flipSuitId || null;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const crateMap = stage.crateMap || null;
     const tokenMap = stage.tokenMap || null;
@@ -577,6 +587,16 @@ class RoyalMatchGame extends RoyalMatchBoard {
         for (let c = 0; c < this.cols; c++) {
           const tile = this.grid[r][c];
           if (flipMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileFlip(tile);
+        }
+      }
+    }
+
+    // スート指定の変転：対象スートのタイルはすべて変転タイルになる
+    if (this.flipSuitId) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          if (tile && !tile.isCrate && !tile.isToken && tile.def.id === this.flipSuitId) this.setTileFlip(tile);
         }
       }
     }

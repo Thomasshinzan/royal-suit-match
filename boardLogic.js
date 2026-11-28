@@ -37,7 +37,7 @@ class RoyalMatchBoard {
     this.lastSwappedCells = [];
     this.nextTileUid = 1;
     this.dragStart = null;
-    this.flipSpawnRate = 0;
+    this.flipSuitId = null;
 
     this.boardContainer = document.getElementById('board-container');
     this.gridBg = document.getElementById('grid-bg');
@@ -287,8 +287,11 @@ class RoyalMatchBoard {
   refreshFlipVisual(tile) {
     if (!tile?.isFlip) return;
     const isBlock = tile.flipForm === 'block';
-    tile.el.classList.remove(FLIP_STAR_DEF.cssClass, FLIP_BLOCK_DEF.cssClass);
-    tile.def = isBlock ? FLIP_BLOCK_DEF : FLIP_STAR_DEF;
+    // ☆形態の姿：スート指定モード（flipSuitId）ではそのスート自体、
+    // そうでなければ専用のワイルドタイル
+    const starDef = this.flipSuitId ? (this.tileMap.get(this.flipSuitId) || FLIP_STAR_DEF) : FLIP_STAR_DEF;
+    tile.el.classList.remove(FLIP_STAR_DEF.cssClass, starDef.cssClass, FLIP_BLOCK_DEF.cssClass);
+    tile.def = isBlock ? FLIP_BLOCK_DEF : starDef;
     tile.el.classList.add(tile.def.cssClass, 'flip-tile');
     tile.el.classList.toggle('flip-block-form', isBlock);
     const suitEl = tile.el.querySelector('.card-suit');
@@ -316,7 +319,8 @@ class RoyalMatchBoard {
       let changed = false;
       for (const { r, c } of cells) {
         const tile = this.grid[r][c];
-        if (!tile || tile.isCrate || tile.isToken || tile.specialId || tile.isFlip || tile.isFrozen) continue;
+        if (!tile || tile.isCrate || tile.isToken || tile.specialId || tile.isFrozen) continue;
+        if (tile.isFlip && tile.flipForm === 'block') continue;
         const oldDef = tile.def;
         // 変化タイルはサイクル内のスートだけに引き直し、バッジも合わせる
         const def = this.pickSafeDefAt(r, c, tile.isChanger ? CHANGER_CYCLE : null);
@@ -326,6 +330,11 @@ class RoyalMatchBoard {
           const suitEl = tile.el.querySelector('.card-suit');
           if (suitEl) suitEl.textContent = def.symbol;
           if (tile.isChanger) this.refreshChangerBadge(tile);
+          // 変転スートとの対応を引き直し結果に同期させる
+          if (this.flipSuitId) {
+            if (def.id === this.flipSuitId && !tile.isFlip) this.setTileFlip(tile);
+            else if (def.id !== this.flipSuitId && tile.isFlip) this.clearTileFlip(tile);
+          }
           changed = true;
         }
       }
@@ -729,8 +738,8 @@ class RoyalMatchBoard {
           const def = this.getRandomTileDef();
           const spawnRow = segmentTop - (writeRow - r + 1) - 0.3;
           const newTile = this.createTileObject(def, r, c, spawnRow);
-          // 変転ステージでは、降ってくるタイルの一部が☆（変転タイル）になる
-          if (this.flipSpawnRate > 0 && Math.random() < this.flipSpawnRate) this.setTileFlip(newTile);
+          // 変転ステージでは、対象スートのタイルはすべて変転タイルになる
+          if (this.flipSuitId && def.id === this.flipSuitId) this.setTileFlip(newTile);
           this.grid[r][c] = newTile;
           newTilesToDrop.push({ tile: newTile, r, c });
         }
@@ -843,6 +852,7 @@ class RoyalMatchBoard {
         const fresh = this.createTileObject(this.getRandomTileDef(), pos.r, pos.c, pos.r, specialId);
         if (wasChanger && !specialId) this.setTileChanger(fresh);
         if (wasFlip && !specialId) this.setTileFlip(fresh);
+        if (this.flipSuitId && !specialId && !fresh.isFlip && fresh.def.id === this.flipSuitId) this.setTileFlip(fresh);
         this.grid[pos.r][pos.c] = fresh;
         return fresh;
       });
