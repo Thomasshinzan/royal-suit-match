@@ -1,6 +1,8 @@
 /**
  * 2. 盤面操作・木箱ギミック・マッチ検出・重力落下エンジン (boardLogic.js)
  */
+// 変化タイルのスート変化サイクル（♠→♥→♦→♣→♠…）
+const CHANGER_CYCLE = ['spade', 'heart', 'diamond', 'club'];
 class RoyalMatchBoard {
   constructor(configData) {
     this.config = configData.boardConfig;
@@ -187,6 +189,71 @@ class RoyalMatchBoard {
     tile.el.classList.remove('skill-targeted');
   }
 
+    // 変化タイル：通常タイルが1手ごとに ♠→♥→♦→♣→♠ と順に姿を変える。
+    // 変化しただけではマッチしない（次の手で初めて揃う）。右下のバッジが
+    // 次になるスート。スペシャル化すると変化は終わる。
+    nextChangerSuitId(suitId) {
+          const idx = CHANGER_CYCLE.indexOf(suitId);
+          return CHANGER_CYCLE[(idx + 1) % CHANGER_CYCLE.length];
+    }
+
+    setTileChanger(tile) {
+          if (!tile || tile.isCrate || tile.isToken || tile.specialId) return;
+          if (!CHANGER_CYCLE.includes(tile.def.id)) {
+                  // サイクル外のスート（ジョーカー）は、ランダムなサイクル内スートに
+                  // 置き換えてから変化タイル化する（4手で必ず元のスートに戻る）
+                  const def = this.tileMap.get(CHANGER_CYCLE[Math.floor(Math.random() * CHANGER_CYCLE.length)]);
+                  if (def) {
+                            tile.el.classList.remove(tile.def.cssClass);
+                            tile.def = def;
+                            tile.el.classList.add(def.cssClass);
+                            const suitEl = tile.el.querySelector('.card-suit');
+                            if (suitEl) suitEl.textContent = def.symbol;
+                  }
+          }
+          tile.isChanger = true;
+          tile.el.classList.add('changer-tile');
+          this.refreshChangerBadge(tile);
+    }
+
+    clearTileChanger(tile) {
+          if (!tile) return;
+          tile.isChanger = false;
+          tile.el.classList.remove('changer-tile');
+          tile.el.querySelector('.changer-badge')?.remove();
+    }
+
+    refreshChangerBadge(tile) {
+          if (!tile?.isChanger) return;
+          const nextDef = this.tileMap.get(this.nextChangerSuitId(tile.def.id));
+          if (!nextDef) return;
+          let badge = tile.el.querySelector('.changer-badge');
+          if (!badge) {
+                  badge = document.createElement('span');
+                  tile.el.appendChild(badge);
+          }
+          badge.textContent = nextDef.symbol;
+          badge.className = `changer-badge ${nextDef.cssClass}`;
+    }
+
+    // 手を1つ消費し終えた後に呼ぶ：盤面の変化タイルをすべて次のスートへ進める
+    advanceChangerTiles() {
+          for (let r = 0; r < this.rows; r++) {
+                  for (let c = 0; c < this.cols; c++) {
+                            const tile = this.grid[r][c];
+                            if (!tile?.isChanger || tile.specialId) continue;
+                            const nextDef = this.tileMap.get(this.nextChangerSuitId(tile.def.id));
+                            if (!nextDef) continue;
+                            tile.el.classList.remove(tile.def.cssClass);
+                            tile.def = nextDef;
+                            tile.el.classList.add(nextDef.cssClass);
+                            const suitEl = tile.el.querySelector('.card-suit');
+                            if (suitEl) suitEl.textContent = nextDef.symbol;
+                            this.refreshChangerBadge(tile);
+                  }
+          }
+    }
+
   // 破壊不可能トークン（👑クラウン）。マッチやスペシャルでは消えないが、
   // 入れ替えで動かすことはできる。最下段まで落ちたら回収される。
   createTokenObject(row, col) {
@@ -355,6 +422,7 @@ class RoyalMatchBoard {
     const specialDef = this.specialMap.get(specialId);
     if (!tile || !specialDef) return;
 
+        if (tile.isChanger) this.clearTileChanger(tile);
     tile.specialId = specialId;
     tile.el.classList.remove('matched', 'selected', 'hint', 'rank-J', 'rank-Q', 'rank-K', 'rank-A');
     tile.el.classList.add('special-card', `rank-${specialDef.rank}`);
@@ -626,8 +694,10 @@ class RoyalMatchBoard {
       movableTiles = movableCoords.map(pos => {
         const old = this.grid[pos.r][pos.c];
         const specialId = old?.specialId || null;
+                const wasChanger = Boolean(old?.isChanger);
         if (old) old.el.remove();
         const fresh = this.createTileObject(this.getRandomTileDef(), pos.r, pos.c, pos.r, specialId);
+                if (wasChanger && !specialId) this.setTileChanger(fresh);
         this.grid[pos.r][pos.c] = fresh;
         return fresh;
       });
