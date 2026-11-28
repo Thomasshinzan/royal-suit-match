@@ -1,8 +1,21 @@
+/**
+ * 2. 盤面操作・木箱ギミック・マッチ検出・重力落下エンジン (boardLogic.js)
+ */
+// 変化タイルのスート変化サイクル（♠→♥→♦→♣→♠…）
+const CHANGER_CYCLE = ['spade', 'heart', 'diamond', 'club'];
+
+// 変転タイルの2形態：☆（ワイルド）とお邪魔（ブロック）。tileDefs には
+// 含めず tileMap にだけ登録するので、通常スポーンで出現することはない。
+const FLIP_STAR_DEF = { id: 'wild', name: 'ワイルド', symbol: '☆', cssClass: 'suit-wild', scoreWeight: 1, spawnWeight: 0, type: 'special' };
+const FLIP_BLOCK_DEF = { id: 'flipblock', name: 'お邪魔', symbol: '✖', cssClass: 'suit-flipblock', scoreWeight: 0, spawnWeight: 0, type: 'special' };
+
 class RoyalMatchBoard {
   constructor(configData) {
     this.config = configData.boardConfig;
     this.tileDefs = configData.tiles;
-    this.specialDefs = configData.specialCards;
+    this.specialDefs = configData.specialCards || [];
+    this.stages = configData.stages || (typeof STAGES !== 'undefined' ? STAGES : []);
+
     this.tileMap = new Map(this.tileDefs.map(t => [t.id, t]));
     this.tileMap.set(FLIP_STAR_DEF.id, FLIP_STAR_DEF);
     this.tileMap.set(FLIP_BLOCK_DEF.id, FLIP_BLOCK_DEF);
@@ -10,36 +23,46 @@ class RoyalMatchBoard {
 
     this.rows = this.config.rows;
     this.cols = this.config.cols;
+
     this.grid = [];
-
-    this.boardEl = document.getElementById('game-board');
-    this.tileLayer = document.getElementById('tile-layer');
-    this.fxLayer = document.getElementById('fx-layer');
-    this.hintLayer = document.getElementById('hint-layer');
-    this.overlay = document.getElementById('message-overlay');
-    this.overlayTitle = document.getElementById('overlay-title');
-    this.overlayMessage = document.getElementById('overlay-message');
-    this.overlayBtn = document.getElementById('overlay-btn');
-
-    this.selectedCell = null;
-    this.isBusy = false;
-    this.dragStart = null;
-
-    this.sound = new SoundEngine(this.config.sound || {});
-
     this.holeSet = new Set();
     this.partitionSet = new Set();
     this.partitionHSet = new Set();
+    this.partitionEls = [];
+    this.score = 0;
+    this.moves = this.config.initialMoves;
+    this.combo = 0;
+    this.isBusy = false;
+    this.selectedCell = null;
+    this.lastSwappedCells = [];
+    this.nextTileUid = 1;
+    this.dragStart = null;
+
+    this.boardContainer = document.getElementById('board-container');
+    this.gridBg = document.getElementById('grid-bg');
+    this.tileLayer = document.getElementById('tile-layer');
+    this.fxLayer = document.getElementById('fx-layer');
+    this.overlay = document.getElementById('board-overlay');
+    this.overlayTitle = document.getElementById('overlay-title');
+    this.overlaySub = document.getElementById('overlay-sub');
+    this.overlayBtn = document.getElementById('btn-overlay-restart');
+
+    this.hudScore = document.getElementById('hud-score');
+    this.hudMoves = document.getElementById('hud-moves');
+    this.hudModeLabel = document.getElementById('hud-mode-label');
+    this.hudCombo = document.getElementById('hud-combo');
+
+    this.sound = new SoundEngine();
   }
 
-  setHoleMap(holeMap) {
-    this.holeSet = new Set();
-    if (!holeMap) return;
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        if (holeMap[r]?.[c]) this.holeSet.add(`${r},${c}`);
-      }
+  initGridBackground() {
+    this.gridBg.innerHTML = '';
+    for (let i = 0; i < this.rows * this.cols; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      this.gridBg.appendChild(cell);
     }
+    this.updateHoleBackground();
   }
 
   isHoleCell(r, c) {
@@ -50,72 +73,99 @@ class RoyalMatchBoard {
     return this.isHoleCell(r, c) || this.isCrateCell(r, c) || this.isFlipBlockCell(r, c);
   }
 
+  setHoleMap(holeMap) {
+    this.holeSet = new Set();
+    if (holeMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          if (holeMap[r]?.[c]) this.holeSet.add(`${r},${c}`);
+        }
+      }
+    }
+    this.updateHoleBackground();
+  }
+
+  updateHoleBackground() {
+    if (!this.gridBg) return;
+    Array.from(this.gridBg.children).forEach((cell, i) => {
+      const r = Math.floor(i / this.cols);
+      const c = i % this.cols;
+      cell.classList.toggle('hole-cell', this.isHoleCell(r, c));
+    });
+  }
+
+  // パーティション（仕切り）。partitionMap の 1 は、そのセルの右隣との
+  // 間に仕切りがあることを表す。仕切り越しの横入れ替えはできない
+  // （マッチ判定やスペシャルの効果は仕切りを越える）。
   setPartitionMap(partitionMap) {
     this.partitionSet = new Set();
-    if (!partitionMap) return;
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        if (partitionMap[r]?.[c]) this.partitionSet.add(`${r},${c}`);
+    if (partitionMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          if (partitionMap[r]?.[c]) this.partitionSet.add(`${r},${c}`);
+        }
       }
     }
     this.renderPartitions();
   }
 
-  // 水平方向の仕切り（床）：そのマスの下辺にある壁
+  // 横パーティション（上下の仕切り）。partitionHMap の 1 は、そのセルの
+  // 下隣との間に仕切り（床）があることを表す。仕切り越しの縦入れ替えは
+  // できず、タイルの落下も仕切りで止まる（マッチ判定は越える）。
   setPartitionHMap(partitionHMap) {
     this.partitionHSet = new Set();
-    if (!partitionHMap) return;
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        if (partitionHMap[r]?.[c]) this.partitionHSet.add(`${r},${c}`);
+    if (partitionHMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          if (partitionHMap[r]?.[c]) this.partitionHSet.add(`${r},${c}`);
+        }
       }
     }
     this.renderPartitions();
-  }
-
-  hasPartitionRight(r, c) {
-    return this.partitionSet.has(`${r},${c}`);
   }
 
   hasFloorBelow(r, c) {
     return this.partitionHSet.has(`${r},${c}`);
   }
 
-  // a と b の間（隣接マス同士）に仕切りがあるか
-  hasPartitionBetween(a, b) {
-    if (a.r === b.r) {
-      const left = Math.min(a.c, b.c);
-      return this.hasPartitionRight(a.r, left);
+  hasPartitionBetween(posA, posB) {
+    if (!posA || !posB) return false;
+    if (posA.r === posB.r && Math.abs(posA.c - posB.c) === 1) {
+      const left = posA.c < posB.c ? posA : posB;
+      return this.partitionSet.has(`${left.r},${left.c}`);
     }
-    if (a.c === b.c) {
-      const top = Math.min(a.r, b.r);
-      return this.hasFloorBelow(top, a.c);
+    if (posA.c === posB.c && Math.abs(posA.r - posB.r) === 1) {
+      const upper = posA.r < posB.r ? posA : posB;
+      return this.partitionHSet.has(`${upper.r},${upper.c}`);
     }
     return false;
   }
 
   renderPartitions() {
     if (!this.fxLayer) return;
-    this.fxLayer.querySelectorAll('.partition-wall, .partition-wall-h').forEach(el => el.remove());
-    if (!this.partitionSet && !this.partitionHSet) return;
-    const cellPercent = 100 / this.cols;
+    for (const el of this.partitionEls) el.remove();
+    this.partitionEls = [];
+    const cellW = 100 / this.cols;
+    const cellH = 100 / this.rows;
     for (const key of this.partitionSet) {
       const [r, c] = key.split(',').map(Number);
       const el = document.createElement('div');
       el.className = 'partition-wall';
-      el.style.left = `calc(${(c + 1) * cellPercent}% - 3px)`;
-      el.style.top = `${r * cellPercent}%`;
-      el.style.height = `${cellPercent}%`;
+      el.style.left = `${(c + 1) * cellW}%`;
+      el.style.top = `${r * cellH}%`;
+      el.style.height = `${cellH}%`;
       this.fxLayer.appendChild(el);
+      this.partitionEls.push(el);
     }
     for (const key of this.partitionHSet) {
       const [r, c] = key.split(',').map(Number);
       const el = document.createElement('div');
       el.className = 'partition-wall-h';
-      el.style.top = `calc(${(r + 1) * cellPercent}% - 3px)`;
-      el.style.left = `${c * cellPercent}%`;
-      el.style.width = `${cellPercent}%`;
+      el.style.left = `${c * cellW}%`;
+      el.style.top = `${(r + 1) * cellH}%`;
+      el.style.width = `${cellW}%`;
       this.fxLayer.appendChild(el);
+      this.partitionEls.push(el);
     }
   }
 
@@ -136,8 +186,10 @@ class RoyalMatchBoard {
     return Boolean(tile?.isFlip && tile.flipForm === 'block');
   }
 
+  // 凍結タイル：通常タイルに氷が付いた状態。入れ替えできず、
+  // 消去される代わりに凍結が解除される（重力では落ちる）。
   setTileFrozen(tile) {
-    if (!tile || tile.isCrate || tile.isToken) return;
+    if (!tile) return;
     tile.isFrozen = true;
     tile.el.classList.add('frozen-tile');
   }
@@ -145,28 +197,32 @@ class RoyalMatchBoard {
   thawTile(tile) {
     if (!tile) return;
     tile.isFrozen = false;
-    tile.el.classList.remove('frozen-tile', 'matched');
+    tile.el.classList.remove('frozen-tile');
+    tile.el.classList.remove('matched');
+    tile.el.classList.remove('skill-targeted');
   }
 
-  // 変化タイル：毎ターン ♠→♥→♦→♣ の順にスートが1つ進む。
-  // バッジには「次になるスート」を表示する。スペシャル化すると変化は止まる。
-  nextChangerSuitId(currentId) {
-    const idx = CHANGER_CYCLE.indexOf(currentId);
-    if (idx < 0) return CHANGER_CYCLE[0];
+  // 変化タイル：通常タイルが1手ごとに ♠→♥→♦→♣→♠ と順に姿を変える。
+  // 変化しただけではマッチしない（次の手で初めて揃う）。右下のバッジが
+  // 次になるスート。スペシャル化すると変化は終わる。
+  nextChangerSuitId(suitId) {
+    const idx = CHANGER_CYCLE.indexOf(suitId);
     return CHANGER_CYCLE[(idx + 1) % CHANGER_CYCLE.length];
   }
 
   setTileChanger(tile) {
     if (!tile || tile.isCrate || tile.isToken || tile.specialId) return;
     if (!CHANGER_CYCLE.includes(tile.def.id)) {
-      // サイクル外のスート（ジョーカー等）はランダムなサイクルスートに寄せ、
-      // 4回の変化で必ず元のスートに戻るようにする
-      const startId = CHANGER_CYCLE[Math.floor(Math.random() * CHANGER_CYCLE.length)];
-      tile.el.classList.remove(tile.def.cssClass);
-      tile.def = this.tileMap.get(startId);
-      tile.el.classList.add(tile.def.cssClass);
-      const suitEl = tile.el.querySelector('.card-suit');
-      if (suitEl) suitEl.textContent = tile.def.symbol;
+      // サイクル外のスート（ジョーカー）は、ランダムなサイクル内スートに
+      // 置き換えてから変化タイル化する（4手で必ず元のスートに戻る）
+      const def = this.tileMap.get(CHANGER_CYCLE[Math.floor(Math.random() * CHANGER_CYCLE.length)]);
+      if (def) {
+        tile.el.classList.remove(tile.def.cssClass);
+        tile.def = def;
+        tile.el.classList.add(def.cssClass);
+        const suitEl = tile.el.querySelector('.card-suit');
+        if (suitEl) suitEl.textContent = def.symbol;
+      }
     }
     tile.isChanger = true;
     tile.el.classList.add('changer-tile');
@@ -182,15 +238,15 @@ class RoyalMatchBoard {
 
   refreshChangerBadge(tile) {
     if (!tile?.isChanger) return;
+    const nextDef = this.tileMap.get(this.nextChangerSuitId(tile.def.id));
+    if (!nextDef) return;
     let badge = tile.el.querySelector('.changer-badge');
     if (!badge) {
       badge = document.createElement('span');
-      badge.className = 'changer-badge';
       tile.el.appendChild(badge);
     }
-    const nextDef = this.tileMap.get(this.nextChangerSuitId(tile.def.id));
-    badge.className = `changer-badge ${nextDef.cssClass}`;
     badge.textContent = nextDef.symbol;
+    badge.className = `changer-badge ${nextDef.cssClass}`;
   }
 
   // 手を1つ消費し終えた後に呼ぶ：盤面の変化タイルをすべて次のスートへ進める
@@ -199,11 +255,13 @@ class RoyalMatchBoard {
       for (let c = 0; c < this.cols; c++) {
         const tile = this.grid[r][c];
         if (!tile?.isChanger || tile.specialId) continue;
+        const nextDef = this.tileMap.get(this.nextChangerSuitId(tile.def.id));
+        if (!nextDef) continue;
         tile.el.classList.remove(tile.def.cssClass);
-        tile.def = this.tileMap.get(this.nextChangerSuitId(tile.def.id));
-        tile.el.classList.add(tile.def.cssClass);
+        tile.def = nextDef;
+        tile.el.classList.add(nextDef.cssClass);
         const suitEl = tile.el.querySelector('.card-suit');
-        if (suitEl) suitEl.textContent = tile.def.symbol;
+        if (suitEl) suitEl.textContent = nextDef.symbol;
         this.refreshChangerBadge(tile);
       }
     }
@@ -289,102 +347,173 @@ class RoyalMatchBoard {
   }
 
   // 破壊不可能トークン（👑クラウン）。マッチやスペシャルでは消えないが、
-  // 重力で落下し、最下段に到達すると回収される。
-  createTokenObject(r, c, visualRow = r) {
-    const def = { id: 'token', name: 'クラウン', scoreWeight: 0 };
+  // 入れ替えで動かすことはできる。最下段まで落ちたら回収される。
+  createTokenObject(row, col) {
+    const uid = this.nextTileUid++;
     const el = document.createElement('div');
     el.className = 'card-tile token-tile';
-    el.innerHTML = `<span class="token-icon">👑</span>`;
-    this.applyTileCoordinates(el, visualRow, c);
-    this.tileLayer.appendChild(el);
-    return {
-      def,
-      el,
+    el.dataset.uid = uid;
+    el.innerHTML = `<span class="card-suit" style="font-size:1.55rem;">👑</span>`;
+
+    const tokenObj = {
+      uid,
       isToken: true,
-      isCrate: false,
+      def: { id: 'token', name: 'クラウン', scoreWeight: 0 },
       specialId: null,
-      row: r,
-      col: c
+      row,
+      col,
+      el
     };
-  }
 
-  isTokenObject(tile) {
-    return Boolean(tile?.isToken);
-  }
-
-  createCrateObject(crateDef, r, c, visualRow = r) {
-    const el = document.createElement('div');
-    const hp = crateDef.hp || 1;
-    el.className = `card-tile crate-tile ${hp > 1 ? 'crate-iron' : 'crate-wood'}`;
-    el.innerHTML = `<span class="crate-icon">${hp > 1 ? '⬛' : '🟫'}</span>`;
-    this.applyTileCoordinates(el, visualRow, c);
+    this.applyTileCoordinates(el, row, col);
     this.tileLayer.appendChild(el);
-    return {
-      def: crateDef,
-      el,
-      hp,
-      maxHp: hp,
-      isCrate: true,
-      specialId: null,
-      row: r,
-      col: c
-    };
+    return tokenObj;
   }
 
-  refreshCrateVisual(tile) {
-    if (!tile?.isCrate) return;
-    if (tile.hp <= 1) {
-      tile.el.classList.remove('crate-iron');
-      tile.el.classList.add('crate-wood');
-      const iconEl = tile.el.querySelector('.crate-icon');
-      if (iconEl) iconEl.textContent = '🟫';
-    }
-  }
-
-  damageCratesAtCells(cells) {
-    let destroyed = 0;
-    for (const { r, c } of cells) {
-      const tile = this.grid[r]?.[c];
-      if (!tile || !tile.isCrate) continue;
-      tile.hp -= 1;
-      this.sound.playCrateHit();
-      if (tile.hp <= 0) {
+  // 最下段に届いたトークンを回収し、落下した個数を返す
+  collectDroppedTokens() {
+    let dropped = 0;
+    const bottom = this.rows - 1;
+    for (let c = 0; c < this.cols; c++) {
+      const tile = this.grid[bottom][c];
+      if (tile?.isToken) {
+        dropped++;
+        if (this.recordTokenDroppedProgress) this.recordTokenDroppedProgress(1);
+        this.spawnSparkles(bottom, c);
         tile.el.remove();
-        this.grid[r][c] = null;
-        destroyed++;
-        this.spawnSparkles(r, c);
-      } else {
-        this.refreshCrateVisual(tile);
+        this.grid[bottom][c] = null;
       }
     }
-    return destroyed;
+    if (dropped > 0 && this.updateStageObjectivesUI) this.updateStageObjectivesUI();
+    return dropped;
   }
 
-  createTileObject(def, r, c, visualRow = r, specialId = null) {
-    const el = document.createElement('div');
-    el.className = `card-tile ${def.cssClass}`;
-    el.innerHTML = `<span class="card-suit">${def.symbol}</span>`;
-    this.applyTileCoordinates(el, visualRow, c);
-    this.tileLayer.appendChild(el);
+  // トークンを回収したら、その分を落下・補充して再度チェックする
+  async collectDroppedTokensAndRefill() {
+    let dropped = this.collectDroppedTokens();
+    while (dropped > 0) {
+      await this.applyGravityAndRefill();
+      dropped = this.collectDroppedTokens();
+    }
+  }
 
-    const tile = {
-      def,
-      el,
+  createCrateObject(row, col, hp = 1) {
+    const uid = this.nextTileUid++;
+    const el = document.createElement('div');
+    el.className = `card-tile crate-tile hp-${hp}`;
+    el.dataset.uid = uid;
+    el.innerHTML = `<span class="card-suit" style="font-size:1.55rem;">📦</span>`;
+
+    const crateObj = {
+      uid,
+      isCrate: true,
+      hp,
+      def: { id: 'crate', name: '木箱', scoreWeight: 1.5 },
       specialId: null,
-      row: r,
-      col: c
+      row,
+      col,
+      el
     };
 
-    if (specialId) {
-      this.upgradeTileToSpecial(tile, specialId);
+    this.applyTileCoordinates(el, row, col);
+    this.tileLayer.appendChild(el);
+    return crateObj;
+  }
+
+  damageCratesAtCells(crateCoords) {
+    let destroyedCount = 0;
+    let damagedAny = false;
+
+    for (const { r, c } of crateCoords) {
+      const tile = this.grid[r]?.[c];
+      if (!tile || !tile.isCrate) continue;
+
+      damagedAny = true;
+      tile.hp -= 1;
+      this.spawnSparkles(r, c);
+
+      if (tile.hp <= 0) {
+        destroyedCount++;
+        if (this.recordCrateDestroyedProgress) this.recordCrateDestroyedProgress(1);
+        tile.el.classList.add('matched');
+        const elRef = tile.el;
+        setTimeout(() => elRef.remove(), this.config.timingsMs.matchPop);
+        this.grid[r][c] = null;
+      } else {
+        tile.el.classList.remove('hp-2', 'damaged');
+        tile.el.classList.add('hp-1', 'damaged');
+      }
     }
 
-    return tile;
+    if (damagedAny) {
+      this.sound.playCrateHit(destroyedCount > 0);
+      if (this.updateStageObjectivesUI) this.updateStageObjectivesUI();
+    }
+    return destroyedCount;
+  }
+
+  getRandomTileDef(forbiddenIds = new Set()) {
+    const candidates = this.tileDefs.filter(t => !forbiddenIds.has(t.id));
+    const pool = candidates.length > 0 ? candidates : this.tileDefs;
+    const totalWeight = pool.reduce((sum, t) => sum + (t.spawnWeight || 1), 0);
+    let rand = Math.random() * totalWeight;
+    for (const t of pool) {
+      rand -= (t.spawnWeight || 1);
+      if (rand <= 0) return t;
+    }
+    return pool[pool.length - 1];
+  }
+
+  pickRandomSubset(items, count) {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy.slice(0, count);
+  }
+
+  applyTileCoordinates(el, row, col) {
+    const cellW = 100 / this.cols;
+    const cellH = 100 / this.rows;
+    el.style.width = `calc(${cellW}% - 4px)`;
+    el.style.height = `calc(${cellH}% - 4px)`;
+    el.style.left = `calc(${col * cellW}% + 2px)`;
+    el.style.top = `calc(${row * cellH}% + 2px)`;
+  }
+
+  updateTilePosition(tile, newRow, newCol, isFalling = false) {
+    if (!tile) return;
+    tile.row = newRow;
+    tile.col = newCol;
+    tile.el.classList.toggle('falling', isFalling);
+    this.applyTileCoordinates(tile.el, newRow, newCol);
+  }
+
+  createTileObject(def, targetRow, targetCol, spawnRow = targetRow, specialId = null) {
+    const uid = this.nextTileUid++;
+    const el = document.createElement('div');
+    const specialDef = specialId ? this.specialMap.get(specialId) : null;
+
+    el.className = `card-tile ${def.cssClass}`;
+    if (specialDef) {
+      el.classList.add('special-card', `rank-${specialDef.rank}`);
+      el.innerHTML = `<span class="special-icon-main">${specialDef.icon}</span>`;
+    } else {
+      el.innerHTML = `<span class="card-suit">${def.symbol}</span>`;
+    }
+    el.dataset.uid = uid;
+
+    const tileObj = { uid, def, specialId, row: targetRow, col: targetCol, el };
+    this.applyTileCoordinates(el, spawnRow, targetCol);
+    this.tileLayer.appendChild(el);
+    return tileObj;
   }
 
   upgradeTileToSpecial(tile, specialId) {
     const specialDef = this.specialMap.get(specialId);
-    if (!specialDef) return;
+    if (!tile || !specialDef) return;
+
     if (tile.isChanger) this.clearTileChanger(tile);
     if (tile.isFlip) this.clearTileFlip(tile);
     tile.specialId = specialId;
@@ -624,7 +753,7 @@ class RoyalMatchBoard {
         if (curr.isToken) {
           // クラウン自体はマッチしないが、相手タイルがマッチするなら有効な手
           if (c + 1 < this.cols && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 }) && this.wouldMatchAfterSwap({ r, c }, { r, c: c + 1 })) return [{ r, c }, { r, c: c + 1 }];
-          if (r + 1 < this.rows && !this.hasPartitionBetween({ r, c }, { r, c: c + 1 }) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) return [{ r, c }, { r: r + 1, c }];
+          if (r + 1 < this.rows && !this.hasPartitionBetween({ r, c }, { r: r + 1, c }) && this.wouldMatchAfterSwap({ r, c }, { r: r + 1, c })) return [{ r, c }, { r: r + 1, c }];
           continue;
         }
 
@@ -728,24 +857,48 @@ class RoyalMatchBoard {
     const centerY = (r + 0.5) * cellSpan;
 
     for (let i = 0; i < 6; i++) {
-      const sp = document.createElement('div');
-      sp.className = 'sparkle';
-      const angle = (Math.PI * 2 * i) / 6 + Math.random() * 0.5;
-      const dist = 4 + Math.random() * 6;
-      sp.style.left = `${centerX + Math.cos(angle) * dist}%`;
-      sp.style.top = `${centerY + Math.sin(angle) * dist}%`;
-      sp.style.backgroundColor = ['#fff176', '#ffd54f', '#ffb74d'][i % 3];
-      this.fxLayer.appendChild(sp);
-      setTimeout(() => sp.remove(), 550);
+      const p = document.createElement('div');
+      p.className = 'sparkle-particle';
+      p.style.left = `${centerX}%`;
+      p.style.top = `${centerY}%`;
+      const angle = (Math.PI * 2 * i) / 6 + Math.random() * 0.4;
+      const dist = 18 + Math.random() * 18;
+      p.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+      p.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+      this.fxLayer.appendChild(p);
+      setTimeout(() => p.remove(), 580);
     }
   }
 
-  showOverlay(title, message, buttonText = null) {
-    this.overlayTitle.textContent = title;
-    this.overlayMessage.innerHTML = message;
-    if (buttonText !== null) {
-      this.overlayBtn.textContent = buttonText;
+  spawnFloatingScore(r, c, points, combo) {
+    const cellSpan = 100 / this.cols;
+    const el = document.createElement('div');
+    el.className = 'floating-score';
+    el.style.left = `${(c + 0.5) * cellSpan}%`;
+    el.style.top = `${(r + 0.5) * cellSpan}%`;
+    el.textContent = combo > 1 ? `+${points} (${combo} CHAIN!)` : `+${points}`;
+    this.fxLayer.appendChild(el);
+    setTimeout(() => el.remove(), 880);
+  }
+
+  updateHUD(animateCombo = false) {
+    this.hudScore.textContent = this.score.toLocaleString();
+    this.hudModeLabel.textContent = 'MOVES';
+    this.hudMoves.textContent = this.moves;
+    this.hudCombo.textContent = `x${Math.max(1, this.combo)}`;
+
+    if (animateCombo && this.combo > 1) {
+      this.hudCombo.classList.remove('combo-active');
+      void this.hudCombo.offsetWidth;
+      this.hudCombo.classList.add('combo-active');
+    } else {
+      this.hudCombo.classList.remove('combo-active');
     }
+  }
+
+  showOverlay(title, sub) {
+    this.overlayTitle.textContent = title;
+    this.overlaySub.textContent = sub;
     this.overlay.classList.add('active');
   }
 
@@ -756,59 +909,4 @@ class RoyalMatchBoard {
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-
-  getRandomTileDef(forbiddenIds = new Set()) {
-    const candidates = this.tileDefs.filter(t => !forbiddenIds.has(t.id));
-    const pool = candidates.length > 0 ? candidates : this.tileDefs;
-    const totalWeight = pool.reduce((sum, t) => sum + (t.spawnWeight || 1), 0);
-    let rand = Math.random() * totalWeight;
-    for (const t of pool) {
-      rand -= (t.spawnWeight || 1);
-      if (rand <= 0) return t;
-    }
-    return pool[pool.length - 1];
-  }
-
-  applyTileCoordinates(el, r, c) {
-    const cellPercent = 100 / this.cols;
-    el.style.width = `calc(${cellPercent}% - 6px)`;
-    el.style.height = `calc(${cellPercent}% - 6px)`;
-    el.style.transform = `translate(${c * 100}%, ${r * 100}%) translate(3px, 3px)`;
-  }
-
-  updateTilePosition(tile, newRow, newCol, isFalling = false) {
-    if (!tile) return;
-    tile.row = newRow;
-    tile.col = newCol;
-    tile.el.classList.toggle('falling', isFalling);
-    this.applyTileCoordinates(tile.el, newRow, newCol);
-  }
-
-  // 最下段に到達したクラウンを回収し、詰まった列を補充する
-  async collectDroppedTokensAndRefill() {
-    let collected = 0;
-    const bottomRow = this.rows - 1;
-    for (let c = 0; c < this.cols; c++) {
-      const tile = this.grid[bottomRow][c];
-      if (tile?.isToken && !this.hasFloorBelow(bottomRow, c)) {
-        tile.el.remove();
-        this.grid[bottomRow][c] = null;
-        collected++;
-        this.spawnSparkles(bottomRow, c);
-      }
-    }
-    if (collected > 0) {
-      if (typeof this.recordTokenProgress === 'function') this.recordTokenProgress(collected);
-      await this.applyGravityAndRefill();
-    }
-    return collected;
-  }
 }
-
-// 変化タイルのスート変化サイクル（♠→♥→♦→♣→♠…）
-const CHANGER_CYCLE = ['spade', 'heart', 'diamond', 'club'];
-
-// 変転タイルの2形態：☆（ワイルド）とお邪魔（ブロック）。tileDefs には
-// 含めず tileMap にだけ登録するので、通常スポーンで出現することはない。
-const FLIP_STAR_DEF = { id: 'wild', name: 'ワイルド', symbol: '☆', cssClass: 'suit-wild', scoreWeight: 1, spawnWeight: 0, type: 'special' };
-const FLIP_BLOCK_DEF = { id: 'flipblock', name: 'お邪魔', symbol: '✖', cssClass: 'suit-flipblock', scoreWeight: 0, spawnWeight: 0, type: 'special' };

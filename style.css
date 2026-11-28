@@ -742,36 +742,55 @@ body::before {
 }
 
 .card-tile.changer-tile {
-    box-shadow:
-      0 3px 7px rgba(0, 0, 0, 0.48),
-          inset 0 1px 0 rgba(255, 255, 255, 0.95),
-          0 0 0 2px rgba(168, 85, 247, 0.65),
-          0 0 12px rgba(168, 85, 247, 0.45);
+  box-shadow:
+    0 3px 7px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 2px rgba(168, 85, 247, 0.65),
+    0 0 12px rgba(168, 85, 247, 0.45);
 }
 
 .changer-badge {
-    position: absolute;
-    right: 2px;
-    bottom: 2px;
-    min-width: 15px;
-    height: 15px;
-    padding: 0 2px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(100, 116, 139, 0.45);
-    font-size: 0.58rem;
-    font-weight: 700;
-    line-height: 14px;
-    text-align: center;
-    pointer-events: none;
-    z-index: 3;
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 3;
 }
 
 .changer-badge.suit-spade { color: var(--suit-spade); }
 .changer-badge.suit-heart { color: var(--suit-heart); }
 .changer-badge.suit-diamond { color: var(--suit-diamond); }
 .changer-badge.suit-club { color: var(--suit-club); }
-.changer-badge.suit-joker { color: var(--suit-joker); }  .suit-wild .card-suit { color: #d97706; } .suit-flipblock .card-suit { color: #cbd5e1; }  .card-tile.flip-tile {   box-shadow:     0 3px 7px rgba(0, 0, 0, 0.48),     inset 0 1px 0 rgba(255, 255, 255, 0.95),     0 0 0 2px rgba(245, 158, 11, 0.7),     0 0 12px rgba(245, 158, 11, 0.45); }  .card-tile.flip-block-form {   background: linear-gradient(155deg, #475569 0%, #334155 75%, #1e293b 100%);   border-color: rgba(148, 163, 184, 0.55);   box-shadow:     0 3px 7px rgba(0, 0, 0, 0.48),     inset 0 1px 0 rgba(148, 163, 184, 0.35); }
+.changer-badge.suit-joker { color: var(--suit-joker); }
+
+.suit-wild .card-suit { color: #d97706; }
+.suit-flipblock .card-suit { color: #cbd5e1; }
+
+.card-tile.flip-tile {
+  box-shadow:
+    0 3px 7px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 2px rgba(245, 158, 11, 0.7),
+    0 0 12px rgba(245, 158, 11, 0.45);
+}
+
+.card-tile.flip-block-form {
+  background: linear-gradient(155deg, #475569 0%, #334155 75%, #1e293b 100%);
+  border-color: rgba(148, 163, 184, 0.55);
+  box-shadow:
+    0 3px 7px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(148, 163, 184, 0.35);
+}
 
 .partition-wall-h {
   position: absolute;
