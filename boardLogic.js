@@ -6,7 +6,7 @@ const CHANGER_CYCLE = ['spade', 'heart', 'diamond', 'club'];
 
 // 変転タイルの2形態：☆（ワイルド）とお邪魔（ブロック）。tileDefs には
 // 含めず tileMap にだけ登録するので、通常スポーンで出現することはない。
-const FLIP_STAR_DEF = { id: 'wild', name: 'ワイルド', symbol: '☆', cssClass: 'suit-wild', scoreWeight: 1, spawnWeight: 0, type: 'special' };
+const FLIP_STAR_DEF = { id: 'wild', name: 'ワイルド', symbol: '☆\uFE0F', cssClass: 'suit-wild', scoreWeight: 1, spawnWeight: 0, type: 'special' };
 const FLIP_BLOCK_DEF = { id: 'flipblock', name: 'お邪魔', symbol: '✖', cssClass: 'suit-flipblock', scoreWeight: 0, spawnWeight: 0, type: 'special' };
 
 class RoyalMatchBoard {
@@ -37,6 +37,7 @@ class RoyalMatchBoard {
     this.lastSwappedCells = [];
     this.nextTileUid = 1;
     this.dragStart = null;
+    this.flipSpawnRate = 0;
 
     this.boardContainer = document.getElementById('board-container');
     this.gridBg = document.getElementById('grid-bg');
@@ -317,12 +318,14 @@ class RoyalMatchBoard {
         const tile = this.grid[r][c];
         if (!tile || tile.isCrate || tile.isToken || tile.specialId || tile.isFlip || tile.isFrozen) continue;
         const oldDef = tile.def;
-        const def = this.pickSafeDefAt(r, c);
+        // 変化タイルはサイクル内のスートだけに引き直し、バッジも合わせる
+        const def = this.pickSafeDefAt(r, c, tile.isChanger ? CHANGER_CYCLE : null);
         if (def) {
           tile.el.classList.remove(oldDef.cssClass);
           tile.el.classList.add(def.cssClass);
           const suitEl = tile.el.querySelector('.card-suit');
           if (suitEl) suitEl.textContent = def.symbol;
+          if (tile.isChanger) this.refreshChangerBadge(tile);
           changed = true;
         }
       }
@@ -331,11 +334,12 @@ class RoyalMatchBoard {
   }
 
   // (r,c) に置くと、そのマスを含むマッチが成立しないスートを返す
-  pickSafeDefAt(r, c) {
+  pickSafeDefAt(r, c, restrictIds = null) {
     const tile = this.grid[r][c];
     if (!tile) return null;
     const original = tile.def;
-    const candidates = [...this.tileDefs].sort(() => Math.random() - 0.5);
+    const pool = restrictIds ? this.tileDefs.filter(d => restrictIds.includes(d.id)) : this.tileDefs;
+    const candidates = [...pool].sort(() => Math.random() - 0.5);
     for (const def of candidates) {
       if (def.id === original.id) continue;
       tile.def = def;
@@ -725,6 +729,8 @@ class RoyalMatchBoard {
           const def = this.getRandomTileDef();
           const spawnRow = segmentTop - (writeRow - r + 1) - 0.3;
           const newTile = this.createTileObject(def, r, c, spawnRow);
+          // 変転ステージでは、降ってくるタイルの一部が☆（変転タイル）になる
+          if (this.flipSpawnRate > 0 && Math.random() < this.flipSpawnRate) this.setTileFlip(newTile);
           this.grid[r][c] = newTile;
           newTilesToDrop.push({ tile: newTile, r, c });
         }

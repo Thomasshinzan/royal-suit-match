@@ -2997,14 +2997,14 @@ const STAGES = [
         0
       ]
     ],
-    "description": "変転タイルは1手ごとに☆とお邪魔に切り替わる。☆はどのスートとも揃うワイルド、お邪魔の間は動かせず消せない。☆のターンに一気に消して、ハートを30個集めよう！",
+    "description": "☆タイルは1手ごとに☆とお邪魔に切り替わる。☆はどのスートとも揃うワイルドで、上からも降ってくる。お邪魔の間は動かせず消せない。☆を30個消そう！",
+    "flipSpawnRate": 0.15,
     "moves": 30,
     "objectives": [
       {
-        "label": "♥ を消す",
-        "suitId": "heart",
+        "label": "☆ を消す",
         "target": 30,
-        "type": "collect_suit"
+        "type": "erase_star"
       }
     ],
     "stageNumber": 22,

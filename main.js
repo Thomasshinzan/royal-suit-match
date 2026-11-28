@@ -6,7 +6,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     super(configData);
 
     this.currentStageIndex = 0;
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0 };
+    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0, starErasedCount: 0 };
     this.stageActionType = 'restart';
 
     this.stageTitleEl = document.getElementById('stage-title');
@@ -160,7 +160,9 @@ class RoyalMatchGame extends RoyalMatchBoard {
     if (typeof this.stageProgress.tokensDropped !== 'number') this.stageProgress.tokensDropped = 0;
     if (typeof this.stageProgress.thawedCount !== 'number') this.stageProgress.thawedCount = 0;
     if (typeof this.stageProgress.comboCount !== 'number') this.stageProgress.comboCount = 0;
+    if (typeof this.stageProgress.starErasedCount !== 'number') this.stageProgress.starErasedCount = 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
+    this.flipSpawnRate = stage.flipSpawnRate || 0;
     this.setHoleMap(stage.holeMap || null);
     this.setPartitionMap(stage.partitionMap || null);
     this.setPartitionHMap(stage.partitionHMap || null);
@@ -241,6 +243,9 @@ class RoyalMatchGame extends RoyalMatchBoard {
       } else if (obj.type === 'special_combo') {
         currentVal = this.stageProgress.comboCount || 0;
         iconHtml = '💥';
+      } else if (obj.type === 'erase_star') {
+        currentVal = this.stageProgress.starErasedCount || 0;
+        iconHtml = '&#x2606;&#xFE0F;';
       }
 
       const isDone = currentVal >= obj.target;
@@ -267,6 +272,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       if (obj.type === 'drop_token') return (this.stageProgress.tokensDropped || 0) >= obj.target;
       if (obj.type === 'thaw_frozen') return (this.stageProgress.thawedCount || 0) >= obj.target;
       if (obj.type === 'special_combo') return (this.stageProgress.comboCount || 0) >= obj.target;
+      if (obj.type === 'erase_star') return (this.stageProgress.starErasedCount || 0) >= obj.target;
       return false;
     });
   }
@@ -299,6 +305,10 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.stageProgress.thawedCount = (this.stageProgress.thawedCount || 0) + count;
   }
 
+  recordStarErasedProgress(count = 1) {
+    this.stageProgress.starErasedCount = (this.stageProgress.starErasedCount || 0) + count;
+  }
+
   // タイルを消す処理：凍結タイルは消えずに凍結解除だけされる
   removeOrThawTile(tile, r, c) {
     if (!tile) return;
@@ -309,6 +319,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       this.updateStageObjectivesUI();
       return;
     }
+    if (tile.isFlip) this.recordStarErasedProgress();
     this.recordRemovedTileProgress(tile, r, c);
     tile.el.remove();
     this.grid[r][c] = null;
@@ -504,7 +515,8 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.combo = 0;
     this.isBusy = false;
     this.lastSwappedCells = [];
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0 };
+    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0, starErasedCount: 0 };
+    this.flipSpawnRate = stage.flipSpawnRate || 0;
     this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
     const crateMap = stage.crateMap || null;
     const tokenMap = stage.tokenMap || null;
