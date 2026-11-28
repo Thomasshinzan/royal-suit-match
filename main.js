@@ -71,7 +71,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         if (!tile) return null;
         if (tile.isCrate) return { type: 'crate', hp: tile.hp };
         if (tile.isToken) return { type: 'token' };
-        return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null, frozen: tile.isFrozen ? 1 : 0 };
+        return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null, frozen: tile.isFrozen ? 1 : 0, changer: tile.isChanger ? 1 : 0 };
       }));
       const data = {
         version: 1,
@@ -180,6 +180,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
           if (!def) return false;
           this.grid[r][c] = this.createTileObject(def, r, c, r, cell.specialId || null);
           if (cell.frozen) this.setTileFrozen(this.grid[r][c]);
+          if (cell.changer && !cell.specialId) this.setTileChanger(this.grid[r][c]);
         } else {
           return false;
         }
@@ -304,6 +305,8 @@ class RoyalMatchGame extends RoyalMatchBoard {
   }
 
   evaluateStageEndState() {
+    // 手を消費したので、変化タイルを次のスートへ進めてから判定・保存する
+    this.advanceChangerTiles();
     this.updateStageObjectivesUI();
 
     if (this.isStageCleared()) {
@@ -529,6 +532,16 @@ class RoyalMatchGame extends RoyalMatchBoard {
         }
       }
     }
+
+        const changeMap = stage.changeMap || null;
+        if (changeMap) {
+                for (let r = 0; r < this.rows; r++) {
+                          for (let c = 0; c < this.cols; c++) {
+                                      const tile = this.grid[r][c];
+                                      if (changeMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileChanger(tile);
+                          }
+                }
+        }
 
     this.ensurePlayableBoard();
     this.updateHUD();
