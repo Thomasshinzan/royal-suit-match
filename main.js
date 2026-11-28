@@ -1,367 +1,77 @@
-/**
- * 3. スキル効果・コンボ処理・ステージ進行＆起動処理 (main.js)
- */
 class RoyalMatchGame extends RoyalMatchBoard {
+  static SAVE_KEY = 'royalSuitMatchSaveV1';
+  static PENDING_FRESH_KEY = 'royalSuitMatchPendingFresh';
+
   constructor(configData) {
     super(configData);
-
+    this.stages = configData.stages || STAGES;
     this.currentStageIndex = 0;
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0 };
-    this.stageActionType = 'restart';
-
-    this.stageTitleEl = document.getElementById('stage-title');
-    this.stageDescEl = document.getElementById('stage-desc');
-    this.objectivesListEl = document.getElementById('objectives-list');
-
-    this.initGridBackground();
-    this.bindEvents();
-    if (!this.tryRestoreSave()) this.loadStage(0);
-  }
-
-  // ---- オートセーブ (localStorage) ----
-  static SAVE_KEY = 'royalSuitMatchSaveV1';
-  // 全クリした一番先のステージを覚えておく記録。
-  // セーブ本体とは別キーにすることで、最終ステージをクリアして
-  // セーブが「全クリ済み」になっても、後からステージが追加された
-  // ときにその新しいステージから再開できる。
-  static PROGRESS_KEY = 'royalSuitMatchProgressV1';
-
-  readProgress() {
-    try {
-      const raw = localStorage.getItem(RoyalMatchGame.PROGRESS_KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      if (!data || data.version !== 1) return null;
-      if (typeof data.highestClearedStageIndex !== 'number' || data.highestClearedStageIndex < 0) return null;
-      return data;
-    } catch (err) {
-      return null;
-    }
-  }
-
-  recordStageCleared(stageIdx) {
-    try {
-      const prev = this.readProgress();
-      const highest = Math.max(prev ? prev.highestClearedStageIndex : -1, stageIdx);
-      localStorage.setItem(RoyalMatchGame.PROGRESS_KEY, JSON.stringify({
-        version: 1, highestClearedStageIndex: highest
-      }));
-    } catch (err) {
-      console.warn('クリア進捗の保存に失敗しました:', err);
-    }
-  }
-
-  // 全ステージ制覇の目印だけ残す。次に開いたとき、クリア済みの
-  // 次のステージがあればそこから、新しいステージがなければ
-  // 最終ステージから始まる。Stage 1 へ戻るのはステージ選択
-  // ボタンでの手動操作だけにする（勝手には戻らない）。
-  saveAllClearedMarker() {
-    try {
-      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify({
-        version: 1, pendingFresh: true, stageIndex: 0, allCleared: true
-      }));
-    } catch (err) {
-      console.warn('オートセーブに失敗しました:', err);
-    }
-  }
-
-  saveGame() {
-    try {
-      const gridData = this.grid.map(row => row.map(tile => {
-        if (!tile) return null;
-        if (tile.isCrate) return { type: 'crate', hp: tile.hp };
-        if (tile.isToken) return { type: 'token' };
-        return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null, frozen: tile.isFrozen ? 1 : 0, changer: tile.isChanger ? 1 : 0 };
-      }));
-      const data = {
-        version: 1,
-        stageIndex: this.currentStageIndex,
-        score: this.score,
-        moves: this.moves,
-        combo: this.combo,
-        stageProgress: this.stageProgress,
-        grid: gridData
-      };
-      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify(data));
-    } catch (err) {
-      console.warn('オートセーブに失敗しました:', err);
-    }
-  }
-
-  savePendingStage(stageIdx) {
-    try {
-      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify({
-        version: 1, pendingFresh: true, stageIndex: stageIdx
-      }));
-    } catch (err) {
-      console.warn('オートセーブに失敗しました:', err);
-    }
-  }
-
-  clearSave() {
-    try {
-      localStorage.removeItem(RoyalMatchGame.SAVE_KEY);
-      localStorage.removeItem(RoyalMatchGame.PROGRESS_KEY);
-    } catch (err) { /* ignore */ }
-  }
-
-  readSave() {
-    try {
-      const raw = localStorage.getItem(RoyalMatchGame.SAVE_KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      if (!data || data.version !== 1) return null;
-      if (typeof data.stageIndex !== 'number' || data.stageIndex < 0 || data.stageIndex >= this.stages.length) return null;
-      return data;
-    } catch (err) {
-      return null;
-    }
-  }
-
-  tryRestoreSave() {
-    const save = this.readSave();
-    if (!save) return false;
-    if (save.pendingFresh) {
-      if (save.allCleared) {
-        // 全クリ済み：クリアした次のステージがあればそこから、
-        // なければ最終ステージから。Stage 1 へは手動で戻る。
-        const progress = this.readProgress();
-        const nextIdx = (progress ? progress.highestClearedStageIndex : -1) + 1;
-        if (nextIdx < this.stages.length) {
-          this.loadStage(nextIdx);
-        } else {
-          this.loadStage(this.stages.length - 1);
-          // loadStage は普通のセーブを書き込んでしまうので目印を
-          // 書き戻しておく。こうしないと、最終ステージを開いた
-          // 時点で目印が消えて、後から追加されたステージから
-          // 再開できなくなる。
-          this.saveAllClearedMarker();
-        }
-      } else {
-        this.loadStage(save.stageIndex);
-      }
-      return true;
-    }
-    if (!Array.isArray(save.grid) || save.grid.length !== this.rows) return false;
-    const stage = this.stages[save.stageIndex];
-    if (!stage) return false;
-
-    this.currentStageIndex = save.stageIndex;
-    this.hideOverlay();
-    this.clearSelection();
-    this.tileLayer.innerHTML = '';
-    this.fxLayer.innerHTML = '';
-    this.score = save.score || 0;
-    this.moves = typeof save.moves === 'number' ? save.moves : stage.moves;
-    this.combo = save.combo || 0;
-    this.isBusy = false;
+    this.movesLeft = 0;
+    this.stageProgress = {
+      collectedSuits: {},
+      specialUsedCount: 0,
+      cratesDestroyed: 0,
+      tokensDropped: 0,
+      thawedCount: 0,
+      comboCount: 0
+    };
+    this.score = 0;
+    this.combo = 0;
+    this.currentComboDisplay = 0;
     this.lastSwappedCells = [];
-    this.stageProgress = save.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0 };
-    if (typeof this.stageProgress.tokensDropped !== 'number') this.stageProgress.tokensDropped = 0;
-    if (typeof this.stageProgress.thawedCount !== 'number') this.stageProgress.thawedCount = 0;
-    if (typeof this.stageProgress.comboCount !== 'number') this.stageProgress.comboCount = 0;
-    this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
-    this.setHoleMap(stage.holeMap || null);
-    this.setPartitionMap(stage.partitionMap || null);
-    this.setPartitionHMap(stage.partitionHMap || null);
+    this.setupEventListeners();
+    if (!this.tryRestoreSave()) {
+      this.loadStage(0);
+    }
+  }
 
-    for (let r = 0; r < this.rows; r++) {
-      if (!Array.isArray(save.grid[r]) || save.grid[r].length !== this.cols) return false;
-      for (let c = 0; c < this.cols; c++) {
-        const cell = save.grid[r][c];
-        if (!cell) continue;
-        if (this.isHoleCell(r, c)) return false;
-        if (cell.type === 'crate') {
-          this.grid[r][c] = this.createCrateObject(r, c, cell.hp || 1);
-        } else if (cell.type === 'token') {
-          this.grid[r][c] = this.createTokenObject(r, c);
-        } else if (cell.type === 'tile') {
-          const def = this.tileMap.get(cell.defId);
-          if (!def) return false;
-          this.grid[r][c] = this.createTileObject(def, r, c, r, cell.specialId || null);
-          if (cell.frozen) this.setTileFrozen(this.grid[r][c]);
-          if (cell.changer && !cell.specialId) this.setTileChanger(this.grid[r][c]);
-        } else {
-          return false;
+  setupEventListeners() {
+    const board = this.boardEl;
+
+    board.addEventListener('touchstart', (e) => {
+      if (this.isBusy || this.overlay.classList.contains('active')) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const cell = this.getCellFromEvent({ clientX: touch.clientX, clientY: touch.clientY });
+      if (cell) {
+        this.dragStart = { cell, x: touch.clientX, y: touch.clientY, swiped: false };
+      }
+    }, { passive: false });
+
+    board.addEventListener('touchmove', (e) => {
+      if (!this.dragStart || this.isBusy || this.overlay.classList.contains('active')) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dx = touch.clientX - this.dragStart.x;
+      const dy = touch.clientY - this.dragStart.y;
+      const threshold = 20;
+
+      if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
+        this.dragStart.swiped = true;
+        const origin = this.dragStart.cell;
+        let targetR = origin.r;
+        let targetC = origin.c;
+
+        if (Math.abs(dx) > Math.abs(dy)) targetC += dx > 0 ? 1 : -1;
+        else targetR += dy > 0 ? 1 : -1;
+
+        this.clearSelection();
+        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC) && !this.isFrozenCell(origin.r, origin.c) && !this.isFrozenCell(targetR, targetC) && !this.isFlipBlockCell(origin.r, origin.c) && !this.isFlipBlockCell(targetR, targetC)) {
+          this.attemptSwap(origin, { r: targetR, c: targetC });
         }
       }
-    }
+    }, { passive: false });
 
-    this.updateHUD();
-    this.updateStageObjectivesUI();
-    this.ensurePlayableBoard();
-    return true;
-  }
-
-  getCurrentStage() {
-    return this.stages[this.currentStageIndex] || this.stages[0];
-  }
-
-  updateStageObjectivesUI() {
-    const stage = this.getCurrentStage();
-    if (this.stageTitleEl) this.stageTitleEl.textContent = stage.title;
-    if (this.stageDescEl) this.stageDescEl.textContent = stage.description;
-
-    const btnStage = document.getElementById('btn-stage-select');
-    if (btnStage) {
-      btnStage.textContent = `🚩 ステージ: ${stage.stageNumber} / ${this.stages.length}`;
-    }
-
-    if (!this.objectivesListEl) return;
-    this.objectivesListEl.innerHTML = stage.objectives.map(obj => {
-      let currentVal = 0;
-      let iconHtml = '🎯';
-
-      if (obj.type === 'collect_suit') {
-        currentVal = this.stageProgress.collectedSuits[obj.suitId] || 0;
-        const suitDef = this.tileMap.get(obj.suitId);
-        if (suitDef) {
-          iconHtml = `<span class="objective-suit-badge ${suitDef.cssClass}"><span class="card-suit" style="font-size:0.85rem;">${suitDef.symbol}</span></span>`;
-        }
-      } else if (obj.type === 'score') {
-        currentVal = this.score;
-        iconHtml = '🏆';
-      } else if (obj.type === 'use_special') {
-        currentVal = this.stageProgress.specialUsedCount;
-        iconHtml = '🃏';
-      } else if (obj.type === 'destroy_crates') {
-        currentVal = this.stageProgress.cratesDestroyed;
-        iconHtml = '📦';
-      } else if (obj.type === 'drop_token') {
-        currentVal = this.stageProgress.tokensDropped || 0;
-        iconHtml = '👑';
-      } else if (obj.type === 'thaw_frozen') {
-        currentVal = this.stageProgress.thawedCount || 0;
-        iconHtml = '❄️';
-      } else if (obj.type === 'special_combo') {
-          currentVal = this.stageProgress.comboCount || 0;
-        iconHtml = '💥';
-      }
-      const isDone = currentVal >= obj.target;
-      const progressText = isDone
-        ? 'CLEAR ✓'
-        : `${Math.min(currentVal, obj.target).toLocaleString()} / ${obj.target.toLocaleString()}`;
-
-      return `
-        <div class="objective-chip ${isDone ? 'completed' : ''}">
-          <span class="objective-icon-label">${iconHtml}<span>${obj.label}</span></span>
-          <span class="objective-progress">${progressText}</span>
-        </div>
-      `;
-    }).join('');
-  }
-
-  isStageCleared() {
-    const stage = this.getCurrentStage();
-    return stage.objectives.every(obj => {
-      if (obj.type === 'collect_suit') return (this.stageProgress.collectedSuits[obj.suitId] || 0) >= obj.target;
-      if (obj.type === 'score') return this.score >= obj.target;
-      if (obj.type === 'use_special') return this.stageProgress.specialUsedCount >= obj.target;
-      if (obj.type === 'destroy_crates') return this.stageProgress.cratesDestroyed >= obj.target;
-      if (obj.type === 'drop_token') return (this.stageProgress.tokensDropped || 0) >= obj.target;
-      if (obj.type === 'thaw_frozen') return (this.stageProgress.thawedCount || 0) >= obj.target;
-      if (obj.type === 'special_combo') return (this.stageProgress.comboCount || 0) >= obj.target;
-      return false;
-    });
-  }
-
-  recordRemovedTileProgress(tile) {
-    if (!tile || tile.isCrate) return;
-    const id = tile.def.id;
-    this.stageProgress.collectedSuits[id] = (this.stageProgress.collectedSuits[id] || 0) + 1;
-  }
-
-  recordSpecialUsedProgress(count = 1) {
-    this.stageProgress.specialUsedCount += count;
-  }
-    recordComboProgress(count = 1) {
-        this.stageProgress.comboCount = (this.stageProgress.comboCount || 0) + count;
-    }
-
-  recordTokenDroppedProgress(count = 1) {
-    this.stageProgress.tokensDropped = (this.stageProgress.tokensDropped || 0) + count;
-  }
-
-  recordThawProgress(count = 1) {
-    this.stageProgress.thawedCount = (this.stageProgress.thawedCount || 0) + count;
-  }
-
-  // タイルを消す処理：凍結タイルは消えずに凍結解除だけされる
-  removeOrThawTile(tile, r, c) {
-    if (!tile) return;
-    if (tile.isFrozen) {
-      this.thawTile(tile);
-      this.recordThawProgress();
-      this.updateStageObjectivesUI();
-      return;
-    }
-    this.recordRemovedTileProgress(tile);
-    tile.el.remove();
-    this.grid[r][c] = null;
-  }
-
-  recordCrateDestroyedProgress(count = 1) {
-    this.stageProgress.cratesDestroyed += count;
-  }
-
-  evaluateStageEndState() {
-    // 手を消費したので、変化タイルを次のスートへ進めてから判定・保存する
-    this.advanceChangerTiles();
-    this.updateStageObjectivesUI();
-
-    if (this.isStageCleared()) {
-      // クリア済みの盤面を復元させない：次ステージへ進む場合は次ステージを新規で開く目印だけ残す
-      this.recordStageCleared(this.currentStageIndex);
-      if (this.currentStageIndex + 1 < this.stages.length) this.savePendingStage(this.currentStageIndex + 1);
-      else this.saveAllClearedMarker();
-      this.sound.playStageClear();
-      const stage = this.getCurrentStage();
-      const hasNextStage = this.currentStageIndex + 1 < this.stages.length;
-
-      if (hasNextStage) {
-        this.stageActionType = 'next';
-        if (this.overlayBtn) this.overlayBtn.textContent = `▶ STAGE ${stage.stageNumber + 1} へ進む`;
-        this.showOverlay(
-          `STAGE ${stage.stageNumber} CLEAR!`,
-          `おめでとうございます！クリア条件を達成しました！\n獲得スコア: ${this.score.toLocaleString()} pts`
-        );
-      } else {
-        this.stageActionType = 'restart_all';
-        if (this.overlayBtn) this.overlayBtn.textContent = '↻ STAGE 1 からもう一度プレイ';
-        this.showOverlay(
-          'ALL STAGES CLEAR! 🎉',
-          `全ステージ制覇おめでとうございます！\n最終スコア: ${this.score.toLocaleString()} pts`
-        );
-      }
-      return true;
-    }
-
-    if (this.moves <= 0) {
-      const stage = this.getCurrentStage();
-      this.savePendingStage(this.currentStageIndex);
-      this.stageActionType = 'restart';
-      if (this.overlayBtn) this.overlayBtn.textContent = `↻ STAGE ${stage.stageNumber} に再挑戦`;
-      this.showOverlay(
-        'STAGE FAILED...',
-        `手数がなくなりました。クリア条件まであと少し！\nスコア: ${this.score.toLocaleString()} pts`
-      );
-      return true;
-    }
-
-    this.saveGame();
-    return false;
-  }
-
-  bindEvents() {
-    this.boardContainer.addEventListener('pointerdown', (e) => {
+    board.addEventListener('pointerdown', (e) => {
       if (this.isBusy || this.overlay.classList.contains('active')) return;
       const cell = this.getCellFromEvent(e);
-      if (!cell) return;
-      this.dragStart = { x: e.clientX, y: e.clientY, cell, swiped: false };
+      if (cell) {
+        this.dragStart = { cell, x: e.clientX, y: e.clientY, swiped: false };
+      }
     });
 
-    this.boardContainer.addEventListener('pointermove', (e) => {
-      if (!this.dragStart || this.dragStart.swiped || this.isBusy) return;
+    board.addEventListener('pointermove', (e) => {
+      if (!this.dragStart || this.isBusy || this.overlay.classList.contains('active')) return;
       const dx = e.clientX - this.dragStart.x;
       const dy = e.clientY - this.dragStart.y;
       const threshold = 20;
@@ -376,7 +86,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         else targetR += dy > 0 ? 1 : -1;
 
         this.clearSelection();
-        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC) && !this.isFrozenCell(origin.r, origin.c) && !this.isFrozenCell(targetR, targetC)) {
+        if (this.isValidCell(targetR, targetC) && !this.isCrateCell(origin.r, origin.c) && !this.isCrateCell(targetR, targetC) && !this.isHoleCell(origin.r, origin.c) && !this.isHoleCell(targetR, targetC) && !this.isFrozenCell(origin.r, origin.c) && !this.isFrozenCell(targetR, targetC) && !this.isFlipBlockCell(origin.r, origin.c) && !this.isFlipBlockCell(targetR, targetC)) {
           this.attemptSwap(origin, { r: targetR, c: targetC });
         }
       }
@@ -395,7 +105,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
     const btnSound = document.getElementById('btn-sound');
     btnSound?.addEventListener('click', () => {
       const isMuted = this.sound.toggleMute();
-      btnSound.textContent = isMuted ? '🔇 音: OFF' : '🔊 音: ON';
+      btnSound.textContent = isMuted ? '🔇 音: OFF' : '🔊 音: OFF';
     });
 
     document.getElementById('btn-stage-select')?.addEventListener('click', () => {
@@ -416,14 +126,14 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     this.overlayBtn?.addEventListener('click', () => {
       if (this.stageActionType === 'next') this.loadStage(this.currentStageIndex + 1);
-      else if (this.stageActionType === 'restart_all') this.loadStage(0);
+      else if (this.stageActionType === 'restart_all') this.loadStage(this.currentStageIndex);
       else this.loadStage(this.currentStageIndex);
     });
   }
 
   async handleCellTap(cell) {
     const tappedTile = this.grid[cell.r]?.[cell.c];
-    if (!tappedTile || tappedTile.isCrate || tappedTile.isFrozen) return;
+    if (!tappedTile || tappedTile.isCrate || tappedTile.isFrozen || (tappedTile.isFlip && tappedTile.flipForm === 'block')) return;
 
     if (this.selectedCell) {
       if (this.selectedCell.r === cell.r && this.selectedCell.c === cell.c) {
@@ -451,383 +161,297 @@ class RoyalMatchGame extends RoyalMatchBoard {
     this.selectCell(cell.r, cell.c);
   }
 
-  isTapActivatableSpecial(tile) {
-    if (!tile?.specialId) return false;
-    return Boolean(this.specialMap.get(tile.specialId)?.tapActivatable);
+  recordRemovedTileProgress(tile, r, c) {
+    if (!tile || tile.isCrate) return;
+    let id = tile.def.id;
+    if (id === 'wild') {
+      // ワイルドは属したマッチのスートとして数える
+      // （マッチ以外＝特殊効果で消えた場合は数えない）
+      id = this.currentCellSuits?.get(`${r},${c}`);
+      if (!id) return;
+    }
+    this.stageProgress.collectedSuits[id] = (this.stageProgress.collectedSuits[id] || 0) + 1;
   }
 
-  async activateSingleSpecialByTap(r, c) {
-    const tile = this.grid[r]?.[c];
-    if (!tile || !tile.specialId) return;
-
-    this.isBusy = true;
-    this.moves = Math.max(0, this.moves - 1);
-    this.combo = 1;
-    this.updateHUD();
-
-    const trigger = { r, c, specialId: tile.specialId, swappedWithSuitId: null };
-    await this.triggerSpecialActivationsAndCascade([trigger]);
-
-    if (!this.evaluateStageEndState()) {
-      await this.ensurePlayableBoard();
-    }
-    this.isBusy = false;
+  recordSpecialUsedProgress(count = 1) {
+    this.stageProgress.specialUsedCount += count;
   }
 
-  loadStage(stageIdx) {
-    this.currentStageIndex = Math.max(0, Math.min(stageIdx, this.stages.length - 1));
-    const stage = this.getCurrentStage();
+  recordTokenProgress(count = 1) {
+    this.stageProgress.tokensDropped += count;
+  }
 
-    this.hideOverlay();
-    this.clearSelection();
-    this.tileLayer.innerHTML = '';
-    this.fxLayer.innerHTML = '';
+  recordThawProgress(count = 1) {
+    this.stageProgress.thawedCount += count;
+  }
 
-    this.score = 0;
-    this.moves = stage.moves;
-    this.combo = 0;
-    this.isBusy = false;
-    this.lastSwappedCells = [];
-    this.stageProgress = { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0 };
-    this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
-    const crateMap = stage.crateMap || null;
-    const tokenMap = stage.tokenMap || null;
-    this.setHoleMap(stage.holeMap || null);
-    this.setPartitionMap(stage.partitionMap || null);
-    this.setPartitionHMap(stage.partitionHMap || null);
+  recordComboProgress(count = 1) {
+    this.stageProgress.comboCount += count;
+  }
 
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        if (this.isHoleCell(r, c)) continue;
-        const crateHp = crateMap?.[r]?.[c] || 0;
-        if (crateHp > 0) {
-          this.grid[r][c] = this.createCrateObject(r, c, crateHp);
-          continue;
-        }
-        if (tokenMap?.[r]?.[c]) {
-          this.grid[r][c] = this.createTokenObject(r, c);
-          continue;
-        }
-
-        const forbiddenIds = new Set();
-        if (c >= 2 && !this.isHoleCell(r, c - 1) && !this.isHoleCell(r, c - 2) && !this.grid[r][c - 1]?.isCrate && !this.grid[r][c - 2]?.isCrate &&
-            this.grid[r][c - 1]?.def.id === this.grid[r][c - 2]?.def.id) {
-          forbiddenIds.add(this.grid[r][c - 1].def.id);
-        }
-        if (r >= 2 && !this.isHoleCell(r - 1, c) && !this.isHoleCell(r - 2, c) && !this.grid[r - 1][c]?.isCrate && !this.grid[r - 2][c]?.isCrate &&
-            this.grid[r - 1][c]?.def.id === this.grid[r - 2][c]?.def.id) {
-          forbiddenIds.add(this.grid[r - 1][c].def.id);
-        }
-        const def = this.getRandomTileDef(forbiddenIds);
-        this.grid[r][c] = this.createTileObject(def, r, c, r);
-      }
+  // 消去の共通入口：凍結タイルは消えずに解凍され、解凍数が加算される。
+  // お邪魔形態の変転タイルは消去自体が無効になる。
+  removeOrThawTile(tile, r, c) {
+    if (!tile) return;
+    if (tile.isFlip && tile.flipForm === 'block') return; // お邪魔は消去できない
+    if (tile.isFrozen) {
+      this.thawTile(tile);
+      this.recordThawProgress();
+      this.updateStageObjectivesUI();
+      return;
     }
+    this.recordRemovedTileProgress(tile, r, c);
+    tile.el.remove();
+    if (this.grid[r]?.[c] === tile) this.grid[r][c] = null;
+  }
 
-    const frozenMap = stage.frozenMap || null;
-    if (frozenMap) {
-      for (let r = 0; r < this.rows; r++) {
-        for (let c = 0; c < this.cols; c++) {
-          const tile = this.grid[r][c];
-          if (frozenMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileFrozen(tile);
-        }
-      }
-    }
+  isStageCleared() {
+    const stage = this.stages[this.currentStageIndex];
+    if (!stage) return false;
+    return stage.objectives.every(obj => {
+      if (obj.type === 'collect_suit') return (this.stageProgress.collectedSuits[obj.suitId] || 0) >= obj.target;
+      if (obj.type === 'destroy_crates') return this.stageProgress.cratesDestroyed >= obj.target;
+      if (obj.type === 'use_special') return this.stageProgress.specialUsedCount >= obj.target;
+      if (obj.type === 'drop_token') return this.stageProgress.tokensDropped >= obj.target;
+      if (obj.type === 'thaw_frozen') return this.stageProgress.thawedCount >= obj.target;
+      if (obj.type === 'special_combo') return this.stageProgress.comboCount >= obj.target;
+      if (obj.type === 'score') return this.score >= obj.target;
+      return false;
+    });
+  }
 
-        const changeMap = stage.changeMap || null;
-        if (changeMap) {
-                for (let r = 0; r < this.rows; r++) {
-                          for (let c = 0; c < this.cols; c++) {
-                                      const tile = this.grid[r][c];
-                                      if (changeMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileChanger(tile);
-                          }
-                }
-        }
-
-    this.ensurePlayableBoard();
-    this.updateHUD();
+  evaluateStageEndState() {
+    // 手を消費したので、変化タイルを次のスートへ進め、変転タイルを
+    // 反転させてから判定・保存する
+    this.advanceChangerTiles();
+    this.flipTiles();
     this.updateStageObjectivesUI();
+    if (this.isStageCleared()) {
+      const nextIdx = this.currentStageIndex + 1;
+      if (nextIdx < this.stages.length) {
+        this.markPendingFresh(nextIdx);
+      } else {
+        // 全ステージクリア後は最終ステージをセーブし直し、リロードで
+        // 最終ステージに戻る（ステージ選択での手動移動も保存される）
+        this.markPendingFresh(this.currentStageIndex);
+      }
+      this.showOverlay('STAGE CLEAR!', 'お見事！ステージをクリアしました！', '次のステージへ');
+      this.stageActionType = 'next';
+      return true;
+    }
+    if (this.movesLeft <= 0) {
+      this.markPendingFresh(this.currentStageIndex);
+      this.showOverlay('STAGE FAILED...', '残念！手数が尽きました。同じステージをもう一度！', 'リトライ');
+      this.stageActionType = 'retry';
+      return true;
+    }
     this.saveGame();
+    return false;
   }
 
   async attemptSwap(posA, posB) {
-    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c) || this.isFrozenCell(posA.r, posA.c) || this.isFrozenCell(posB.r, posB.c) || this.hasPartitionBetween(posA, posB)) return;
-    this.isBusy = true;
-    this.sound.playSwap();
+    if (this.isBusy) return;
+    if (!this.isAdjacent(posA, posB)) return;
+    if (this.isCrateCell(posA.r, posA.c) || this.isCrateCell(posB.r, posB.c) || this.isHoleCell(posA.r, posA.c) || this.isHoleCell(posB.r, posB.c) || this.isFrozenCell(posA.r, posA.c) || this.isFrozenCell(posB.r, posB.c) || this.isFlipBlockCell(posA.r, posA.c) || this.isFlipBlockCell(posB.r, posB.c) || this.hasPartitionBetween(posA, posB)) return;
 
-    const tileBeforeA = this.grid[posA.r][posA.c];
-    const tileBeforeB = this.grid[posB.r][posB.c];
-    const isSpecialA = Boolean(tileBeforeA?.specialId);
-    const isSpecialB = Boolean(tileBeforeB?.specialId);
+    const tileA = this.grid[posA.r][posA.c];
+    const tileB = this.grid[posB.r][posB.c];
+    if (!tileA || !tileB) return;
 
-    this.swapTilesInGrid(posA, posB);
-    await this.sleep(this.config.timingsMs.swap);
-
-    const movedA = this.grid[posB.r][posB.c];
-    const movedB = this.grid[posA.r][posA.c];
-
-    if (isSpecialA && isSpecialB) {
-      this.moves = Math.max(0, this.moves - 1);
-      this.combo = 1;
+    // ペアコンボ（スペシャル同士の入れ替え）を最優先で判定
+    if (tileA.specialId && tileB.specialId) {
+      this.isBusy = true;
+      this.movesLeft--;
       this.updateHUD();
-
-      await this.executeSpecialPairCombo(
-        { r: posB.r, c: posB.c, tile: movedA },
-        { r: posA.r, c: posA.c, tile: movedB }
-      );
-
-      if (!this.evaluateStageEndState()) {
-        await this.ensurePlayableBoard();
-      }
-      this.isBusy = false;
-      return;
-    }
-
-    if (isSpecialA || isSpecialB) {
-      this.moves = Math.max(0, this.moves - 1);
-      this.combo = 1;
-      this.updateHUD();
-
-      const initialTriggers = [];
-      if (movedA?.specialId) {
-        initialTriggers.push({ r: posB.r, c: posB.c, specialId: movedA.specialId, swappedWithSuitId: movedB?.isToken ? null : (movedB?.def.id || null) });
-      }
-      if (movedB?.specialId) {
-        initialTriggers.push({ r: posA.r, c: posA.c, specialId: movedB.specialId, swappedWithSuitId: movedA?.isToken ? null : (movedA?.def.id || null) });
-      }
-
-      const simultaneousMatches = this.findAllMatches();
-      await this.triggerSpecialActivationsAndCascade(initialTriggers, simultaneousMatches);
-
-      if (!this.evaluateStageEndState()) {
-        await this.ensurePlayableBoard();
-      }
-      this.isBusy = false;
-      return;
-    }
-
-    const matchData = this.findAllMatches();
-    if (matchData.cells.length === 0) {
-      this.sound.playInvalid();
       this.swapTilesInGrid(posA, posB);
-      await this.sleep(this.config.timingsMs.swap);
+      this.lastSwappedCells = [posA, posB];
+      await this.sleep(200);
+      await this.executeSpecialPairCombo(posA, posB);
+      if (!this.evaluateStageEndState()) {
+        await this.ensurePlayableBoard();
+      }
       this.isBusy = false;
       return;
     }
 
+    this.isBusy = true;
+    this.swapTilesInGrid(posA, posB);
     this.lastSwappedCells = [posA, posB];
-    this.moves = Math.max(0, this.moves - 1);
-    this.combo = 0;
-    this.updateHUD();
+    await this.sleep(120);
 
-    await this.resolveCascadeLoop(matchData);
-    this.lastSwappedCells = [];
+    const specialTileInfo = tileA.specialId
+      ? { tile: tileA, pos: posB }
+      : (tileB.specialId ? { tile: tileB, pos: posA } : null);
+    const normalMatch = this.findAllMatches();
 
-    if (!this.evaluateStageEndState()) {
-      await this.ensurePlayableBoard();
+    // 通常マッチが成立すればスペシャル単体の発動より優先
+    if (normalMatch.cells.length > 0) {
+      this.movesLeft--;
+      this.updateHUD();
+      this.combo = 0;
+      await this.resolveCascadeLoop(normalMatch);
+      if (!this.evaluateStageEndState()) {
+        await this.ensurePlayableBoard();
+      }
+      this.isBusy = false;
+      return;
     }
 
+    // マッチ不成立でも、スペシャルと通常タイルの入れ替えならスペシャルが発動
+    if (specialTileInfo) {
+      this.movesLeft--;
+      this.updateHUD();
+      await this.triggerSpecialActivationsAndCascade([{
+        r: specialTileInfo.pos.r,
+        c: specialTileInfo.pos.c,
+        specialId: specialTileInfo.tile.specialId,
+        swappedWithSuitId: (specialTileInfo.tile === tileA ? tileB : tileA).def.id
+      }]);
+      if (!this.evaluateStageEndState()) {
+        await this.ensurePlayableBoard();
+      }
+      this.isBusy = false;
+      return;
+    }
+
+    // マッチ不成立：元に戻す
+    this.swapTilesInGrid(posA, posB);
+    this.lastSwappedCells = [];
+    await this.sleep(120);
     this.isBusy = false;
   }
 
-  async executeSpecialPairCombo(primary, secondary) {
+  isTapActivatableSpecial(tile) {
+    if (!tile || !tile.specialId) return false;
+    const def = this.specialMap.get(tile.specialId);
+    return Boolean(def?.tapActivatable);
+  }
+
+  async activateSingleSpecialByTap(r, c) {
+    if (this.isBusy) return;
+    const tile = this.grid[r][c];
+    if (!tile?.specialId) return;
+    this.isBusy = true;
+    this.movesLeft--;
+    this.updateHUD();
+    await this.triggerSpecialActivationsAndCascade([{
+      r, c, specialId: tile.specialId, swappedWithSuitId: null
+    }]);
+    if (!this.evaluateStageEndState()) {
+      await this.ensurePlayableBoard();
+    }
+    this.isBusy = false;
+  }
+
+  // スペシャル同士を入れ替えた時のコンボ。A同士は盤面の2スート全消去、
+  // それ以外は2つの効果を合成して発動する。
+  async executeSpecialPairCombo(posA, posB) {
     this.recordComboProgress();
-    const rank1 = this.specialMap.get(primary.tile.specialId)?.rank;
-    const rank2 = this.specialMap.get(secondary.tile.specialId)?.rank;
-    const ranks = [rank1, rank2];
+    const tileA = this.grid[posA.r][posA.c];
+    const tileB = this.grid[posB.r][posB.c];
+    if (!tileA?.specialId || !tileB?.specialId) return;
+
+    const rankA = this.specialMap.get(tileA.specialId)?.rank;
+    const rankB = this.specialMap.get(tileB.specialId)?.rank;
 
     const destroySet = new Set();
-    const preservedKeys = new Set();
+    const crateSet = new Set();
     const chainQueue = [];
-    const activatedKeys = new Set([`${primary.r},${primary.c}`, `${secondary.r},${secondary.c}`]);
 
-    let comboTitle = 'SPECIAL COMBO';
-    let comboColor = '#fbbf24';
-    let comboBonus = 1000;
-    let rectOverlayBounds = null;
-    const beams = [];
-
-    const addCellToDestroy = (r, c) => {
-      if (!this.isValidCell(r, c) || !this.grid[r][c]) return;
+    const addCellToDestroy = (r, c, allowChain = true) => {
       const key = `${r},${c}`;
-      if (preservedKeys.has(key)) return;
+      if (destroySet.has(key)) return;
+      const tile = this.grid[r]?.[c];
+      if (!tile) return;
+      if (tile.isCrate) { crateSet.add(key); return; }
+      if (tile.isToken) return;
       destroySet.add(key);
-
-      const t = this.grid[r][c];
-      if (!t.isCrate && t?.specialId && !activatedKeys.has(key)) {
-        chainQueue.push({ r, c, specialId: t.specialId, swappedWithSuitId: null });
+      if (allowChain && tile.specialId) {
+        chainQueue.push({ r, c, specialId: tile.specialId, swappedWithSuitId: null });
       }
     };
 
-    const collect28RectAroundPair = () => {
-      const minR = Math.min(primary.r, secondary.r);
-      const maxR = Math.max(primary.r, secondary.r);
-      const minC = Math.min(primary.c, secondary.c);
-      const maxC = Math.max(primary.c, secondary.c);
-
-      const startR = Math.max(0, minR - 2);
-      const endR = Math.min(this.rows - 1, maxR + 2);
-      const startC = Math.max(0, minC - 2);
-      const endC = Math.min(this.cols - 1, maxC + 2);
-
-      rectOverlayBounds = { startR, endR, startC, endC };
-      for (let r = startR; r <= endR; r++) {
-        for (let c = startC; c <= endC; c++) addCellToDestroy(r, c);
-      }
-    };
-
-    if (rank1 === 'A' && rank2 === 'A') {
-      comboTitle = 'GRAND FLUSH 全消去！';
-      comboColor = '#fb7185';
-      comboBonus = 3000;
-      for (let r = 0; r < this.rows; r++) {
-        for (let c = 0; c < this.cols; c++) addCellToDestroy(r, c);
-      }
-    } else if (ranks.includes('A')) {
-      comboTitle = '2種類全消去！';
-      comboColor = '#f43f5e';
-      comboBonus = 1800;
-
-      addCellToDestroy(primary.r, primary.c);
-      addCellToDestroy(secondary.r, secondary.c);
-
-      const availableSuits = new Set();
+    if (rankA === 'A' && rankB === 'A') {
+      // A+A：盤面の2スートをランダムに選んで全消去
+      const suitsOnBoard = [...new Set(
+        Array.from({ length: this.rows }, (_, r) =>
+          Array.from({ length: this.cols }, (_, c) => this.grid[r][c])
+        ).flat().filter(t => t && !t.isCrate && !t.isToken).map(t => t.def.id)
+      )];
+      const shuffled = [...suitsOnBoard].sort(() => Math.random() - 0.5);
+      const targets = shuffled.slice(0, Math.min(2, shuffled.length));
+      const bannerSuits = targets.map(id => this.tileMap.get(id)).filter(Boolean);
+      this.showComboBanner(`Aコンボ：${bannerSuits.map(d => d.symbol).join(' と ')} を全消去！`);
       for (let r = 0; r < this.rows; r++) {
         for (let c = 0; c < this.cols; c++) {
-          const t = this.grid[r][c];
-          if (t && !t.isCrate && !activatedKeys.has(`${r},${c}`)) availableSuits.add(t.def.id);
+          const tile = this.grid[r][c];
+          if (tile && targets.includes(tile.def.id)) addCellToDestroy(r, c);
         }
       }
-      const chosenSuits = new Set(this.pickRandomSubset(Array.from(availableSuits), 2));
-      for (let r = 0; r < this.rows; r++) {
-        for (let c = 0; c < this.cols; c++) {
-          const t = this.grid[r][c];
-          if (t && !t.isCrate && chosenSuits.has(t.def.id)) addCellToDestroy(r, c);
-        }
-      }
-    } else if (rank1 === 'J' && rank2 === 'J') {
-      comboTitle = 'MEGA BLAST 周囲28消去！';
-      comboColor = '#38bdf8';
-      comboBonus = 800;
-      collect28RectAroundPair();
-    } else if (ranks.includes('J') && (ranks.includes('Q') || ranks.includes('K'))) {
-      const qOrK = (rank1 === 'Q' || rank1 === 'K') ? primary : secondary;
-      const keptRank = rank1 === 'J' ? rank2 : rank1;
-      const keptKey = `${qOrK.r},${qOrK.c}`;
-
-      comboTitle = '周囲28消去＆矢印残存！';
-      comboColor = keptRank === 'Q' ? '#fbbf24' : '#c084fc';
-      comboBonus = 1000;
-
-      preservedKeys.add(keptKey);
-      collect28RectAroundPair();
-    } else if (rank1 === 'Q' && rank2 === 'Q') {
-      comboTitle = '縦3列一掃！';
-      comboColor = '#fbbf24';
-      comboBonus = 1200;
-
-      const baseCol = primary.c;
-      for (let dc = -1; dc <= 1; dc++) {
-        const col = baseCol + dc;
-        if (col >= 0 && col < this.cols) {
-          beams.push({ type: 'vertical', index: col, styleClass: '' });
-          for (let r = 0; r < this.rows; r++) addCellToDestroy(r, col);
-        }
-      }
-      addCellToDestroy(secondary.r, secondary.c);
-    } else if (rank1 === 'K' && rank2 === 'K') {
-      comboTitle = '横3行一掃！';
-      comboColor = '#c084fc';
-      comboBonus = 1200;
-
-      const baseRow = primary.r;
-      for (let dr = -1; dr <= 1; dr++) {
-        const row = baseRow + dr;
-        if (row >= 0 && row < this.rows) {
-          beams.push({ type: 'horizontal', index: row, styleClass: 'king' });
-          for (let c = 0; c < this.cols; c++) addCellToDestroy(row, c);
-        }
-      }
-      addCellToDestroy(secondary.r, secondary.c);
-    } else if ((rank1 === 'Q' && rank2 === 'K') || (rank1 === 'K' && rank2 === 'Q')) {
-      const qNode = rank1 === 'Q' ? primary : secondary;
-      const kNode = rank1 === 'K' ? primary : secondary;
-
-      comboTitle = 'ROYAL 3-LINE CROSS！';
-      comboColor = '#f59e0b';
-      comboBonus = 1400;
-
-      const targetCols = Array.from(new Set([qNode.c, kNode.c]));
-      const targetRows = Array.from(new Set([qNode.r, kNode.r]));
-
-      for (const col of targetCols) {
-        beams.push({ type: 'vertical', index: col, styleClass: '' });
-        for (let r = 0; r < this.rows; r++) addCellToDestroy(r, col);
-      }
-      for (const row of targetRows) {
-        beams.push({ type: 'horizontal', index: row, styleClass: 'king' });
-        for (let c = 0; c < this.cols; c++) addCellToDestroy(row, c);
-      }
+    } else {
+      // それ以外：両スペシャルの効果範囲を合成
+      const effA = this.computeSingleSkillEffect({ r: posA.r, c: posA.c, specialId: tileA.specialId, swappedWithSuitId: tileB.def.id }, new Set());
+      const effB = this.computeSingleSkillEffect({ r: posB.r, c: posB.c, specialId: tileB.specialId, swappedWithSuitId: tileA.def.id }, new Set());
+      addCellToDestroy(posA.r, posA.c, false);
+      addCellToDestroy(posB.r, posB.c, false);
+      for (const cell of effA.targets) addCellToDestroy(cell.r, cell.c);
+      for (const cell of effB.targets) addCellToDestroy(cell.r, cell.c);
     }
 
-    for (const node of [primary, secondary]) {
-      const k = `${node.r},${node.c}`;
-      if (!preservedKeys.has(k)) node.tile.el.classList.add('skill-activating');
-      else node.tile.el.classList.add('combo-preserved');
-    }
-
-    const chainedVisuals = [];
+    const chainedEffects = [];
+    const activatedKeys = new Set([`${posA.r},${posA.c}`, `${posB.r},${posB.c}`]);
     while (chainQueue.length > 0) {
       const trig = chainQueue.shift();
-      const tKey = `${trig.r},${trig.c}`;
-      if (activatedKeys.has(tKey) || preservedKeys.has(tKey)) continue;
-      activatedKeys.add(tKey);
-      destroySet.add(tKey);
-
-      const effect = this.computeSingleSkillEffect(trig, destroySet);
-      chainedVisuals.push(effect);
-      for (const target of effect.targets) {
-        const k = `${target.r},${target.c}`;
-        if (preservedKeys.has(k)) continue;
-        destroySet.add(k);
-        const tTile = this.grid[target.r]?.[target.c];
-        if (tTile?.specialId && !activatedKeys.has(k)) {
-          chainQueue.push({ r: target.r, c: target.c, specialId: tTile.specialId, swappedWithSuitId: null });
-        }
-      }
+      const key = `${trig.r},${trig.c}`;
+      if (activatedKeys.has(key)) continue;
+      activatedKeys.add(key);
+      const eff = this.computeSingleSkillEffect(trig, destroySet);
+      chainedEffects.push(eff);
+      for (const cell of eff.targets) addCellToDestroy(cell.r, cell.c);
     }
 
-    this.sound.playSkill('combo');
-    this.recordSpecialUsedProgress(2 + chainedVisuals.length);
-    this.playComboSpecialVisuals(comboTitle, comboColor, beams, rectOverlayBounds, destroySet, preservedKeys);
-    if (chainedVisuals.length > 0) this.playSkillEffects(chainedVisuals, false);
+    const allEffects = [
+      { targets: Array.from(destroySet).map(k => { const [r, c] = k.split(',').map(Number); return { r, c }; }), isPairCombo: true },
+      ...chainedEffects
+    ];
+    this.playSkillEffects(allEffects, true);
+    this.recordSpecialUsedProgress(2 + chainedEffects.length);
 
-    await this.sleep(280);
+    await this.sleep(250);
 
-    const cellsToRemove = Array.from(destroySet)
-      .filter(k => !preservedKeys.has(k))
-      .map(k => {
-        const [r, c] = k.split(',').map(Number);
-        return { r, c };
-      });
-
+    const cellsToRemove = Array.from(destroySet).map(k => {
+      const [r, c] = k.split(',').map(Number);
+      return { r, c };
+    });
+    const cardTargets = cellsToRemove.filter(({ r, c }) => !this.isCrateCell(r, c) && !this.isTokenCell(r, c) && !this.isFlipBlockCell(r, c));
     const crateTargets = cellsToRemove.filter(({ r, c }) => this.isCrateCell(r, c));
-    const cardTargets = cellsToRemove.filter(({ r, c }) => !this.isCrateCell(r, c) && !this.isTokenCell(r, c));
 
-    let roundPoints = comboBonus;
+    let roundPoints = 0;
+    let centerR = 0;
+    let centerC = 0;
     for (const { r, c } of cardTargets) {
       const tile = this.grid[r][c];
       if (!tile) continue;
-      roundPoints += Math.round(this.config.baseMatchScore * tile.def.scoreWeight);
-      if (!tile.el.classList.contains('skill-activating')) tile.el.classList.add('matched');
+      roundPoints += Math.round(this.config.baseMatchScore * tile.def.scoreWeight * 2);
+      centerR += r;
+      centerC += c;
+      tile.el.classList.add('matched');
       this.spawnSparkles(r, c);
     }
 
     const destroyedCrates = this.damageCratesAtCells(crateTargets);
-    roundPoints += destroyedCrates * 150;
+    roundPoints += destroyedCrates * 150 * 2;
+    this.stageProgress.cratesDestroyed += destroyedCrates;
+
+    for (const { r, c } of crateTargets) this.damageCratesAtCells([{ r, c }]);
+    this.stageProgress.cratesDestroyed += 0;
 
     this.score += roundPoints;
     this.updateHUD(true);
-    this.spawnFloatingScore(primary.r, primary.c, roundPoints, 2);
+
+    if (cardTargets.length > 0) {
+      this.spawnFloatingScore(centerR / cardTargets.length, centerC / cardTargets.length, roundPoints, 2);
+    }
 
     await this.sleep(this.config.timingsMs.matchPop);
 
@@ -836,70 +460,25 @@ class RoyalMatchGame extends RoyalMatchBoard {
     }
     this.updateStageObjectivesUI();
 
-    for (const key of preservedKeys) {
-      const [pr, pc] = key.split(',').map(Number);
-      this.grid[pr]?.[pc]?.el.classList.remove('combo-preserved');
-    }
-
     await this.applyGravityAndRefill();
     await this.collectDroppedTokensAndRefill();
     const nextMatches = this.findAllMatches();
     if (nextMatches.cells.length > 0) {
+      this.combo = 1;
       await this.resolveCascadeLoop(nextMatches);
     }
   }
 
-  playComboSpecialVisuals(title, color, beams, rectBounds, destroySet, preservedKeys) {
-    const cellSpan = 100 / this.cols;
-
+  showComboBanner(text) {
     const banner = document.createElement('div');
     banner.className = 'skill-cutin-banner';
-    banner.style.setProperty('--skill-color', color);
+    banner.style.setProperty('--skill-color', '#f43f5e');
     banner.innerHTML = `
-      <span class="skill-cutin-badge">COMBO</span>
-      <span class="skill-cutin-text">${title}</span>
+      <span class="skill-cutin-badge">💥</span>
+      <span class="skill-cutin-text">${text}</span>
     `;
     this.fxLayer.appendChild(banner);
-    setTimeout(() => banner.remove(), 1400);
-
-    if (rectBounds) {
-      const zone = document.createElement('div');
-      zone.className = 'combo-rect-zone';
-      zone.style.left = `${rectBounds.startC * cellSpan}%`;
-      zone.style.top = `${rectBounds.startR * cellSpan}%`;
-      zone.style.width = `${(rectBounds.endC - rectBounds.startC + 1) * cellSpan}%`;
-      zone.style.height = `${(rectBounds.endR - rectBounds.startR + 1) * cellSpan}%`;
-      this.fxLayer.appendChild(zone);
-      setTimeout(() => zone.remove(), 520);
-    }
-
-    for (const b of beams) {
-      const beam = document.createElement('div');
-      if (b.type === 'horizontal') {
-        beam.className = `skill-beam ${b.styleClass || ''}`;
-        beam.style.left = '0%';
-        beam.style.width = '100%';
-        beam.style.top = `${(b.index + 0.2) * cellSpan}%`;
-        beam.style.height = `${cellSpan * 0.6}%`;
-      } else {
-        beam.className = `skill-beam vertical ${b.styleClass || ''}`;
-        beam.style.top = '0%';
-        beam.style.height = '100%';
-        beam.style.left = `${(b.index + 0.2) * cellSpan}%`;
-        beam.style.width = `${cellSpan * 0.6}%`;
-      }
-      this.fxLayer.appendChild(beam);
-      setTimeout(() => beam.remove(), 500);
-    }
-
-    for (const key of destroySet) {
-      if (preservedKeys.has(key)) continue;
-      const [r, c] = key.split(',').map(Number);
-      const tile = this.grid[r]?.[c];
-      if (tile && !tile.el.classList.contains('skill-activating')) {
-        tile.el.classList.add('skill-targeted');
-      }
-    }
+    setTimeout(() => banner.remove(), 1250);
   }
 
   planSpecialCardSpawns(groups) {
@@ -908,11 +487,12 @@ class RoyalMatchGame extends RoyalMatchBoard {
 
     const pickPivotCell = (cells) => {
       for (const sw of this.lastSwappedCells) {
-        const found = cells.find(cell => cell.r === sw.r && cell.c === sw.c && !this.grid[cell.r]?.[cell.c]?.isFrozen);
+        const found = cells.find(cell => cell.r === sw.r && cell.c === sw.c && !this.grid[cell.r]?.[cell.c]?.isFrozen && this.grid[cell.r]?.[cell.c]?.def.id !== 'wild');
         if (found) return found;
       }
-      const nonFrozen = cells.filter(cell => !this.grid[cell.r]?.[cell.c]?.isFrozen);
-      const pool = nonFrozen.length > 0 ? nonFrozen : cells;
+      const nonWild = cells.filter(cell => this.grid[cell.r]?.[cell.c]?.def.id !== 'wild');
+      const nonFrozen = nonWild.filter(cell => !this.grid[cell.r]?.[cell.c]?.isFrozen);
+      const pool = nonFrozen.length > 0 ? nonFrozen : (nonWild.length > 0 ? nonWild : cells);
       return pool[Math.floor(pool.length / 2)];
     };
 
@@ -977,100 +557,128 @@ class RoyalMatchGame extends RoyalMatchBoard {
       let targetSuit = swappedWithSuitId;
       if (!targetSuit) {
         const presentSuits = new Set();
-        for (let row = 0; row < this.rows; row++) {
-          for (let col = 0; col < this.cols; col++) {
-            const t = this.grid[row][col];
-            if (t && !t.isCrate && !t.isToken && !(row === r && col === c)) presentSuits.add(t.def.id);
+        for (let rr = 0; rr < this.rows; rr++) {
+          for (let cc = 0; cc < this.cols; cc++) {
+            const t = this.grid[rr][cc];
+            if (t && !t.isCrate && !t.isToken) presentSuits.add(t.def.id);
           }
         }
-        const arr = Array.from(presentSuits);
-        targetSuit = arr.length > 0 ? arr[Math.floor(Math.random() * arr.length)] : null;
+        const suitIds = [...presentSuits];
+        targetSuit = suitIds[Math.floor(Math.random() * suitIds.length)];
       }
-
-      if (targetSuit) {
-        for (let row = 0; row < this.rows; row++) {
-          for (let col = 0; col < this.cols; col++) {
-            if (canHit(row, col) && !this.isCrateCell(row, col) && this.grid[row][col]?.def.id === targetSuit) {
-              affectedCells.push({ r: row, c: col });
-            }
-          }
+      for (let rr = 0; rr < this.rows; rr++) {
+        for (let cc = 0; cc < this.cols; cc++) {
+          const t = this.grid[rr][cc];
+          if (t && t.def.id === targetSuit && canHit(rr, cc)) affectedCells.push({ r: rr, c: cc });
         }
       }
     }
 
-    return { skill: skillDef, pivot: { r, c }, orientation, targets: affectedCells };
+    return { r, c, specialId, targets: affectedCells, orientation, color: skillDef?.color || '#fff', icon: skillDef?.icon || '' };
   }
 
-  async triggerSpecialActivationsAndCascade(initialTriggers, simultaneousMatchData = { cells: [], groups: [] }) {
-    const destroySet = new Set();
-    const triggeredVisuals = [];
+  playSkillEffects(effects, isChained = false) {
+    for (const eff of effects) {
+      if (eff.specialId === 'line_5' || eff.specialId === 'lt_5') {
+        const beam = document.createElement('div');
+        beam.className = `skill-beam ${eff.orientation === 'vertical' ? 'beam-vertical' : 'beam-horizontal'}`;
+        beam.style.setProperty('--skill-color', eff.color);
+        const cellPercent = 100 / this.cols;
+        if (eff.orientation === 'vertical') {
+          beam.style.left = `calc(${eff.c * cellPercent}% + 3px)`;
+          beam.style.width = `calc(${cellPercent}% - 6px)`;
+        } else {
+          beam.style.top = `calc(${eff.r * cellPercent}% + 3px)`;
+          beam.style.height = `calc(${cellPercent}% - 6px)`;
+        }
+        this.fxLayer.appendChild(beam);
+        setTimeout(() => beam.remove(), 500);
+      } else if (eff.specialId === 'mega_6') {
+        const flash = document.createElement('div');
+        flash.className = 'skill-flash';
+        flash.style.setProperty('--skill-color', eff.color);
+        this.fxLayer.appendChild(flash);
+        setTimeout(() => flash.remove(), 500);
+      }
+    }
+
+    const bannerEffects = effects.filter(e => e.specialId);
+    if (bannerEffects.length > 0 && !isChained) {
+      const eff = bannerEffects[0];
+      const banner = document.createElement('div');
+      banner.className = 'skill-cutin-banner';
+      banner.style.setProperty('--skill-color', eff.color);
+      banner.innerHTML = `
+        <span class="skill-cutin-badge">${eff.icon}</span>
+        <span class="skill-cutin-text">${this.specialMap.get(eff.specialId)?.name || ''} 発動！</span>
+      `;
+      this.fxLayer.appendChild(banner);
+      setTimeout(() => banner.remove(), 1250);
+    }
+  }
+
+  async triggerSpecialActivationsAndCascade(initialTriggers) {
     const queue = [...initialTriggers];
     const activatedKeys = new Set();
+    const allEffects = [];
+    const destroySet = new Set();
+    const crateSet = new Set();
 
-    for (const cell of simultaneousMatchData.cells) {
-      const key = `${cell.r},${cell.c}`;
+    const addCellToDestroy = (r, c) => {
+      const key = `${r},${c}`;
+      const tile = this.grid[r]?.[c];
+      if (!tile) return;
+      if (tile.isCrate) { crateSet.add(key); return; }
+      if (tile.isToken) return;
+      if (destroySet.has(key)) return;
       destroySet.add(key);
-      const t = this.grid[cell.r]?.[cell.c];
-      if (t?.specialId && !activatedKeys.has(key)) {
-        queue.push({ r: cell.r, c: cell.c, specialId: t.specialId, swappedWithSuitId: null });
+      if (tile.specialId && !activatedKeys.has(key)) {
+        queue.push({ r, c, specialId: tile.specialId, swappedWithSuitId: null });
       }
+    };
+
+    for (const trig of initialTriggers) {
+      addCellToDestroy(trig.r, trig.c);
     }
 
     while (queue.length > 0) {
-      const current = queue.shift();
-      const key = `${current.r},${current.c}`;
+      const trig = queue.shift();
+      const key = `${trig.r},${trig.c}`;
       if (activatedKeys.has(key)) continue;
       activatedKeys.add(key);
-      destroySet.add(key);
 
-      const originTile = this.grid[current.r]?.[current.c];
-      if (originTile) originTile.el.classList.add('skill-activating');
-
-      const effect = this.computeSingleSkillEffect(current, destroySet);
-      triggeredVisuals.push(effect);
-
-      for (const target of effect.targets) {
-        const tKey = `${target.r},${target.c}`;
-        destroySet.add(tKey);
-        const targetTile = this.grid[target.r]?.[target.c];
-        if (targetTile?.specialId && !activatedKeys.has(tKey)) {
-          queue.push({ r: target.r, c: target.c, specialId: targetTile.specialId, swappedWithSuitId: null });
-        }
-      }
+      const eff = this.computeSingleSkillEffect(trig, destroySet);
+      allEffects.push(eff);
+      for (const cell of eff.targets) addCellToDestroy(cell.r, cell.c);
     }
 
-    this.playSkillEffects(triggeredVisuals, true);
-    this.recordSpecialUsedProgress(triggeredVisuals.length);
-    await this.sleep(240);
+    this.playSkillEffects(allEffects);
+    this.recordSpecialUsedProgress(allEffects.length);
+    await this.sleep(250);
 
     const allDestroyCells = Array.from(destroySet).map(k => {
       const [r, c] = k.split(',').map(Number);
       return { r, c };
     });
-
+    const cardTargets = allDestroyCells.filter(({ r, c }) => !this.isCrateCell(r, c) && !this.isTokenCell(r, c) && !this.isFlipBlockCell(r, c));
     const crateTargets = allDestroyCells.filter(({ r, c }) => this.isCrateCell(r, c));
-    const cardTargets = allDestroyCells.filter(({ r, c }) => !this.isCrateCell(r, c) && !this.isTokenCell(r, c));
 
     let roundPoints = 0;
     let centerR = 0;
     let centerC = 0;
-
     for (const { r, c } of cardTargets) {
       const tile = this.grid[r][c];
       if (!tile) continue;
-      roundPoints += Math.round(this.config.baseMatchScore * tile.def.scoreWeight);
+      roundPoints += Math.round(this.config.baseMatchScore * tile.def.scoreWeight * 1);
       centerR += r;
       centerC += c;
-      if (!tile.el.classList.contains('skill-activating')) tile.el.classList.add('matched');
+      tile.el.classList.add('matched');
       this.spawnSparkles(r, c);
     }
 
     const destroyedCrates = this.damageCratesAtCells(crateTargets);
     roundPoints += destroyedCrates * 150;
-
-    for (const vis of triggeredVisuals) {
-      if (vis.skill?.bonusScore) roundPoints += vis.skill.bonusScore;
-    }
+    this.stageProgress.cratesDestroyed += destroyedCrates;
 
     this.score += roundPoints;
     this.updateHUD(true);
@@ -1080,7 +688,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
         centerR / cardTargets.length,
         centerC / cardTargets.length,
         roundPoints,
-        triggeredVisuals.length > 1 ? triggeredVisuals.length : 1
+        1
       );
     }
 
@@ -1095,69 +703,16 @@ class RoyalMatchGame extends RoyalMatchBoard {
     await this.collectDroppedTokensAndRefill();
     const nextMatches = this.findAllMatches();
     if (nextMatches.cells.length > 0) {
+      this.combo = 0;
       await this.resolveCascadeLoop(nextMatches);
     }
-  }
-
-  playSkillEffects(triggeredSkills, showCutin = true) {
-    const cellSpan = 100 / this.cols;
-
-    triggeredSkills.forEach((entry, idx) => {
-      const { skill, pivot, orientation, targets } = entry;
-      if (!skill) return;
-
-      if (idx === 0 && showCutin) this.sound.playSkill(skill.id);
-
-      if (showCutin && idx < 3) {
-        const banner = document.createElement('div');
-        banner.className = 'skill-cutin-banner';
-        banner.style.setProperty('--skill-color', skill.color);
-        banner.style.top = `${10 + idx * 11}%`;
-        banner.innerHTML = `
-          <span class="skill-cutin-badge">${skill.icon}</span>
-          <span class="skill-cutin-text">${skill.name} 発動！</span>
-        `;
-        this.fxLayer.appendChild(banner);
-        setTimeout(() => banner.remove(), 1300);
-      }
-
-      if (orientation === 'horizontal') {
-        const beamH = document.createElement('div');
-        beamH.className = 'skill-beam king';
-        beamH.style.left = '0%';
-        beamH.style.width = '100%';
-        beamH.style.top = `${(pivot.r + 0.25) * cellSpan}%`;
-        beamH.style.height = `${cellSpan * 0.5}%`;
-        this.fxLayer.appendChild(beamH);
-        setTimeout(() => beamH.remove(), 480);
-      }
-
-      if (orientation === 'vertical') {
-        const beamV = document.createElement('div');
-        beamV.className = 'skill-beam vertical';
-        beamV.style.top = '0%';
-        beamV.style.height = '100%';
-        beamV.style.left = `${(pivot.c + 0.25) * cellSpan}%`;
-        beamV.style.width = `${cellSpan * 0.5}%`;
-        this.fxLayer.appendChild(beamV);
-        setTimeout(() => beamV.remove(), 480);
-      }
-
-      if (targets && targets.length > 0) {
-        for (const t of targets) {
-          const tile = this.grid[t.r]?.[t.c];
-          if (tile && !tile.el.classList.contains('skill-activating')) {
-            tile.el.classList.add('skill-targeted');
-          }
-        }
-      }
-    });
   }
 
   async resolveCascadeLoop(initialMatchData) {
     let currentMatchData = initialMatchData;
 
     while (currentMatchData.cells.length > 0) {
+      this.currentCellSuits = currentMatchData.cellSuits || null;
       this.combo++;
       this.sound.playMatch(this.combo);
 
@@ -1227,7 +782,7 @@ class RoyalMatchGame extends RoyalMatchBoard {
       const cardTargets = [];
       for (const cell of cellsToRemove) {
         if (this.isCrateCell(cell.r, cell.c)) crateKeys.add(`${cell.r},${cell.c}`);
-        else if (!this.isTokenCell(cell.r, cell.c)) cardTargets.push(cell);
+        else if (!this.isTokenCell(cell.r, cell.c) && !this.isFlipBlockCell(cell.r, cell.c)) cardTargets.push(cell);
       }
 
       const crateTargets = Array.from(crateKeys).map(k => {
@@ -1300,26 +855,294 @@ class RoyalMatchGame extends RoyalMatchBoard {
       currentMatchData = this.findAllMatches();
     }
   }
+
+  spawnFloatingScore(r, c, points, comboLvl) {
+    const el = document.createElement('div');
+    el.className = 'floating-score';
+    const cellPercent = 100 / this.cols;
+    el.style.left = `${(c + 0.5) * cellPercent}%`;
+    el.style.top = `${(r + 0.5) * cellPercent}%`;
+    el.textContent = `+${points}`;
+    this.fxLayer.appendChild(el);
+    setTimeout(() => el.remove(), 900);
+  }
+
+  loadStage(stageIndex) {
+    if (stageIndex < 0 || stageIndex >= this.stages.length) return;
+    this.currentStageIndex = stageIndex;
+    const stage = this.stages[stageIndex];
+
+    this.clearSelection();
+    this.tileLayer.innerHTML = '';
+    this.fxLayer.innerHTML = '';
+    this.hintLayer.innerHTML = '';
+    this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
+    this.score = 0;
+    this.combo = 0;
+    this.movesLeft = stage.moves;
+    this.stageProgress = {
+      collectedSuits: {},
+      specialUsedCount: 0,
+      cratesDestroyed: 0,
+      tokensDropped: 0,
+      thawedCount: 0,
+      comboCount: 0
+    };
+    if (typeof this.stageProgress.comboCount !== 'number') this.stageProgress.comboCount = 0;
+    this.lastSwappedCells = [];
+    this.stageActionType = null;
+    this.hideOverlay();
+
+    this.setHoleMap(stage.holeMap || null);
+    this.setPartitionMap(stage.partitionMap || null);
+    this.setPartitionHMap(stage.partitionHMap || null);
+
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        if (this.isHoleCell(r, c)) continue;
+
+        if (stage.tokenMap?.[r]?.[c]) {
+          this.grid[r][c] = this.createTokenObject(r, c);
+          continue;
+        }
+
+        if (stage.crateMap?.[r]?.[c]) {
+          const crateDef = this.config.crates.find(cr => cr.id === stage.crateMap[r][c]);
+          if (crateDef) {
+            this.grid[r][c] = this.createCrateObject(crateDef, r, c);
+            continue;
+          }
+        }
+
+        const forbidden = new Set();
+        if (c >= 2) {
+          const left1 = this.grid[r][c - 1];
+          const left2 = this.grid[r][c - 2];
+          if (left1 && left2 && !left1.isCrate && !left1.isToken && !left2.isCrate && !left2.isToken && left1.def.id === left2.def.id) {
+            forbidden.add(left1.def.id);
+          }
+        }
+        if (r >= 2) {
+          const up1 = this.grid[r - 1][c];
+          const up2 = this.grid[r - 2][c];
+          if (up1 && up2 && !up1.isCrate && !up1.isToken && !up2.isCrate && !up2.isToken && up1.def.id === up2.def.id) {
+            forbidden.add(up1.def.id);
+          }
+        }
+        const def = this.getRandomTileDef(forbidden);
+        this.grid[r][c] = this.createTileObject(def, r, c);
+      }
+    }
+
+    const frozenMap = stage.frozenMap || null;
+    if (frozenMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          if (frozenMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileFrozen(tile);
+        }
+      }
+    }
+
+    const changeMap = stage.changeMap || null;
+    if (changeMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          if (changeMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileChanger(tile);
+        }
+      }
+    }
+
+    const flipMap = stage.flipMap || null;
+    if (flipMap) {
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          if (flipMap[r]?.[c] && tile && !tile.isCrate && !tile.isToken) this.setTileFlip(tile);
+        }
+      }
+    }
+
+    this.breakInitialMatches();
+    this.ensurePlayableBoard();
+    this.updateHUD();
+    this.updateStageObjectivesUI();
+    this.saveGame();
+  }
+
+  updateHUD(animateScore = false) {
+    const stageLabel = document.getElementById('stage-label');
+    if (stageLabel) stageLabel.textContent = this.stages[this.currentStageIndex].title;
+    const movesEl = document.getElementById('moves-left');
+    if (movesEl) movesEl.textContent = this.movesLeft;
+    const scoreEl = document.getElementById('score');
+    if (scoreEl) {
+      if (animateScore && scoreEl.textContent !== String(this.score)) {
+        scoreEl.classList.remove('score-pop');
+        void scoreEl.offsetWidth;
+        scoreEl.classList.add('score-pop');
+      }
+      scoreEl.textContent = this.score;
+    }
+    const stageBtn = document.getElementById('btn-stage-select');
+    if (stageBtn) stageBtn.textContent = `${this.currentStageIndex + 1} / ${this.stages.length}`;
+  }
+
+  updateStageObjectivesUI() {
+    const container = document.getElementById('objectives-container');
+    if (!container) return;
+    const stage = this.stages[this.currentStageIndex];
+    const items = stage.objectives.map(obj => {
+      let icon = '🎯';
+      let current = 0;
+      if (obj.type === 'collect_suit') {
+        const def = this.tileMap.get(obj.suitId);
+        icon = def ? def.symbol : '🎯';
+        current = this.stageProgress.collectedSuits[obj.suitId] || 0;
+      } else if (obj.type === 'destroy_crates') {
+        icon = '📦';
+        current = this.stageProgress.cratesDestroyed;
+      } else if (obj.type === 'use_special') {
+        icon = '✨';
+        current = this.stageProgress.specialUsedCount;
+      } else if (obj.type === 'drop_token') {
+        icon = '👑';
+        current = this.stageProgress.tokensDropped;
+      } else if (obj.type === 'thaw_frozen') {
+        icon = '❄';
+        current = this.stageProgress.thawedCount;
+      } else if (obj.type === 'special_combo') {
+        icon = '💥';
+        current = this.stageProgress.comboCount;
+      } else if (obj.type === 'score') {
+        icon = '⭐';
+        current = this.score;
+      }
+      return `<div class="objective-chip ${current >= obj.target ? 'done' : ''}"><span class="objective-icon">${icon}</span> ${obj.label} <span class="objective-count">${current} / ${obj.target}</span></div>`;
+    });
+    container.innerHTML = items.join('');
+  }
+
+  // ---- オートセーブ ----
+  saveGame() {
+    try {
+      const data = {
+        version: 1,
+        stageIndex: this.currentStageIndex,
+        score: this.score,
+        movesLeft: this.movesLeft,
+        stageProgress: this.stageProgress,
+        pendingFresh: false,
+        grid: this.grid.map(row => row.map(tile => {
+          if (!tile) return null;
+          if (tile.isToken) return { type: 'token' };
+          if (tile.isCrate) return { type: 'crate', crateId: tile.def.id, hp: tile.hp };
+          return { type: 'tile', defId: tile.def.id, specialId: tile.specialId || null, frozen: tile.isFrozen ? 1 : 0, changer: tile.isChanger ? 1 : 0, flip: tile.isFlip ? tile.flipForm : 0 };
+        }))
+      };
+      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify(data));
+    } catch (e) { /* 保存失敗は無視 */ }
+  }
+
+  markPendingFresh(stageIndex) {
+    try {
+      const data = {
+        version: 1,
+        stageIndex,
+        score: 0,
+        movesLeft: this.stages[stageIndex].moves,
+        stageProgress: { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0 },
+        pendingFresh: true,
+        grid: null
+      };
+      localStorage.setItem(RoyalMatchGame.SAVE_KEY, JSON.stringify(data));
+    } catch (e) { /* 保存失敗は無視 */ }
+  }
+
+  clearSave() {
+    try { localStorage.removeItem(RoyalMatchGame.SAVE_KEY); } catch (e) { /* 無視 */ }
+  }
+
+  tryRestoreSave() {
+    let raw = null;
+    try { raw = localStorage.getItem(RoyalMatchGame.SAVE_KEY); } catch (e) { /* 無視 */ }
+    if (!raw) return false;
+    let data = null;
+    try { data = JSON.parse(raw); } catch (e) { return false; }
+    if (!data || typeof data.stageIndex !== 'number') return false;
+    if (data.stageIndex < 0 || data.stageIndex >= this.stages.length) return false;
+
+    if (data.pendingFresh || !Array.isArray(data.grid)) {
+      this.loadStage(data.stageIndex);
+      return true;
+    }
+
+    const stage = this.stages[data.stageIndex];
+    this.currentStageIndex = data.stageIndex;
+    this.clearSelection();
+    this.tileLayer.innerHTML = '';
+    this.fxLayer.innerHTML = '';
+    this.hintLayer.innerHTML = '';
+    this.grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
+    this.score = data.score || 0;
+    this.combo = 0;
+    this.movesLeft = data.movesLeft ?? stage.moves;
+    this.stageProgress = data.stageProgress || { collectedSuits: {}, specialUsedCount: 0, cratesDestroyed: 0, tokensDropped: 0, thawedCount: 0, comboCount: 0 };
+    if (typeof this.stageProgress.comboCount !== 'number') this.stageProgress.comboCount = 0;
+    if (typeof this.stageProgress.thawedCount !== 'number') this.stageProgress.thawedCount = 0;
+    this.lastSwappedCells = [];
+    this.stageActionType = null;
+    this.hideOverlay();
+
+    this.setHoleMap(stage.holeMap || null);
+    this.setPartitionMap(stage.partitionMap || null);
+    this.setPartitionHMap(stage.partitionHMap || null);
+
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const cell = data.grid[r]?.[c];
+        if (!cell) continue;
+        if (cell.type === 'token') {
+          this.grid[r][c] = this.createTokenObject(r, c);
+        } else if (cell.type === 'crate') {
+          const crateDef = this.config.crates.find(cr => cr.id === cell.crateId);
+          if (crateDef) {
+            const crate = this.createCrateObject(crateDef, r, c);
+            crate.hp = cell.hp ?? crate.maxHp;
+            this.refreshCrateVisual(crate);
+            this.grid[r][c] = crate;
+          }
+        } else {
+          const def = this.tileMap.get(cell.defId) || this.tileDefs[0];
+          this.grid[r][c] = this.createTileObject(def, r, c, r, cell.specialId || null);
+          if (cell.frozen) this.setTileFrozen(this.grid[r][c]);
+          if (cell.changer && !cell.specialId) this.setTileChanger(this.grid[r][c]);
+          if (cell.flip && !cell.specialId) {
+            this.grid[r][c].isFlip = true;
+            this.grid[r][c].flipForm = cell.flip;
+            this.refreshFlipVisual(this.grid[r][c]);
+          }
+        }
+      }
+    }
+
+    this.updateHUD();
+    this.updateStageObjectivesUI();
+    return true;
+  }
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-  let gameConfig = DEFAULT_GAME_CONFIG;
-
+  let gameConfig;
   try {
     const response = await fetch('gameConfig.json');
-    if (response.ok) {
-      gameConfig = await response.json();
-    }
-  } catch (err) {
-    console.warn('外部 gameConfig.json の取得をスキップし、内蔵フォールバック設定を使用します:', err);
+    if (!response.ok) throw new Error('config fetch failed');
+    gameConfig = await response.json();
+  } catch (e) {
+    gameConfig = JSON.parse(JSON.stringify(DEFAULT_GAME_CONFIG));
   }
-
-  // ステージ構成は stages.js (STAGES) が唯一の置き場所
-  gameConfig = { ...gameConfig, stages: (typeof STAGES !== 'undefined' ? STAGES : []) };
-
-  try {
-    window.royalMatchApp = new RoyalMatchGame(gameConfig);
-  } catch (err) {
-    console.error('ゲームの初期化に失敗しました:', err);
-  }
+  gameConfig.stages = STAGES;
+  const game = new RoyalMatchGame(gameConfig);
+  window.royalMatchGame = game;
 });
